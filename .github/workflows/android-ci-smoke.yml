@@ -68,6 +68,12 @@ jobs:
       - name: Verify Expo SDK 57 package contract
         run: node ci/verify-expo-sdk57-package-contract.mjs build-src
 
+      - name: Restore shared workspace config
+        run: node ci/restore-workspace-config.mjs build-src
+
+      - name: Verify shared workspace config
+        run: node ci/verify-workspace-config-contract.mjs build-src
+
       - name: Install workspace dependencies
         working-directory: build-src
         run: pnpm install --no-frozen-lockfile
