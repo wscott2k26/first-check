@@ -80,6 +80,12 @@ jobs:
       - name: Verify Expo SDK 57 mobile tsconfig
         run: node ci/verify-mobile-tsconfig-sdk57-contract.mjs build-src
 
+      - name: Apply mobile TypeScript source compatibility
+        run: node ci/apply-mobile-typescript-source-compat.mjs build-src
+
+      - name: Verify mobile TypeScript source contract
+        run: node ci/verify-mobile-typescript-source-contract.mjs build-src
+
       - name: Restore shared workspace config
         run: node ci/restore-workspace-config.mjs build-src
 
