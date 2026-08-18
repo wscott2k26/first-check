@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
+const root=process.argv[2];
+if(!root) throw new Error('usage: node verify-mobile-typescript-source-contract.mjs <source-root>');
+const layout=fs.readFileSync(path.join(root,'apps/mobile/app/(tabs)/_layout.tsx'),'utf8');
+if(!layout.includes("import { Text, type ColorValue } from 'react-native';") && !layout.includes("import { type ColorValue, Text } from 'react-native';")) throw new Error('tab layout must import ColorValue');
+if(!layout.includes('{color}:{color:ColorValue}')) throw new Error('tab glyph color must accept React Native ColorValue');
+const ts=JSON.parse(fs.readFileSync(path.join(root,'apps/mobile/tsconfig.json'),'utf8'));
+const exclude=ts.exclude ?? [];
+if(!exclude.includes('test')) throw new Error('production mobile typecheck must exclude Jest test sources');
+console.log('Mobile production TypeScript source contract passed.');
