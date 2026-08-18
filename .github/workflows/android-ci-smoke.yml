@@ -1,0 +1,95 @@
+name: First Check Android CI Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ci/**'
+      - '.github/workflows/android-ci-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: first-check-android-ci-smoke
+  cancel-in-progress: true
+
+jobs:
+  android-smoke:
+    name: Build Android AAB smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPO_PUBLIC_EAS_PROJECT_ID: ff934e37-087c-4fee-939f-b88ee43e7378
+      EXPO_PUBLIC_SUPABASE_URL: https://dedjopeislkywjgytolc.supabase.co
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_26aW-dQfwaZzs7eCJuUMfQ_5Op3nn6X
+      EXPO_PUBLIC_FIRST_CHECK_API_URL: https://dedjopeislkywjgytolc.supabase.co/functions/v1/first-check-api
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.17.1
+          run_install: false
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Reconstruct verified source
+        run: bash ci/RECONSTRUCT.sh
+
+      - name: Apply First Check Air mobile theme
+        run: node ci/apply-premium-mobile-theme.mjs build-src
+
+      - name: Verify premium mobile theme
+        run: node ci/verify-premium-mobile-theme.mjs build-src
+
+      - name: Install workspace dependencies
+        working-directory: build-src
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build shared packages
+        working-directory: build-src
+        run: |
+          pnpm --filter @first-check/schemas build
+          pnpm --filter @first-check/domain build
+          pnpm --filter @first-check/ui build
+          pnpm --filter @first-check/api-client build
+
+      - name: Typecheck native mobile app
+        working-directory: build-src
+        run: pnpm --filter @first-check/mobile typecheck
+
+      - name: Generate Android native project
+        working-directory: build-src/apps/mobile
+        run: pnpm exec expo prebuild --platform android --clean
+
+      - name: Build release AAB smoke
+        working-directory: build-src/apps/mobile/android
+        run: ./gradlew app:bundleRelease --no-daemon
+
+      - name: Verify AAB exists
+        run: |
+          test -f build-src/apps/mobile/android/app/build/outputs/bundle/release/app-release.aab
+          ls -lh build-src/apps/mobile/android/app/build/outputs/bundle/release/app-release.aab
+
+      - name: Upload smoke AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-check-android-ci-smoke-debug-signed-not-for-store
+          path: build-src/apps/mobile/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 3
