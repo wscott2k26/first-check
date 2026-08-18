@@ -1,0 +1,123 @@
+name: First Check Android Store Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ci/apply-store-v3-hardening.mjs'
+      - '.github/workflows/android-store-public.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: first-check-android-store
+  cancel-in-progress: false
+
+jobs:
+  build-store-aab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout public First Check CI repo
+        uses: actions/checkout@v4
+
+      - name: Record build start
+        run: |
+          printf '{"status":"started","run_id":%s,"started_at":"%s"}\n' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ci/store-build-start.json
+          git config user.name 'First Check CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add ci/store-build-start.json
+          git commit -m "ci: record store build start ${{ github.run_id }}" || true
+          git push origin HEAD:main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+          pnpm --version
+          java -version
+      - name: Reconstruct verified CI source
+        run: bash ci/RECONSTRUCT.sh
+      - name: Apply existing Air + SDK compatibility
+        run: |
+          node ci/apply-premium-mobile-theme.mjs build-src
+          node ci/apply-expo-sdk57-compat.mjs build-src
+          node ci/apply-typescript-sdk57-compat.mjs build-src
+          node ci/apply-mobile-tsconfig-sdk57-compat.mjs build-src
+          node ci/apply-mobile-typescript-source-compat.mjs build-src
+          node ci/restore-workspace-config.mjs build-src
+      - name: Apply V3 store hardening
+        run: node ci/apply-store-v3-hardening.mjs build-src
+      - name: Install and lock dependencies
+        working-directory: build-src
+        run: |
+          pnpm install --no-frozen-lockfile
+          test -s pnpm-lock.yaml
+          pnpm install --frozen-lockfile
+      - name: Build shared packages and typecheck mobile
+        working-directory: build-src
+        run: |
+          pnpm --filter @first-check/schemas build
+          pnpm --filter @first-check/domain build
+          pnpm --filter @first-check/ui build
+          pnpm --filter @first-check/api-client build
+          pnpm --filter @first-check/mobile typecheck
+          pnpm --filter @first-check/mobile exec expo install --check
+      - name: Generate Android API 36 project
+        working-directory: build-src/apps/mobile
+        run: pnpm exec expo prebuild --platform android --clean --no-install
+      - name: Verify package and strip debug signing from release
+        working-directory: build-src
+        run: |
+          grep -q 'com.stormandme.firstcheck' apps/mobile/android/app/build.gradle
+          grep -q 'targetSdkVersion rootProject.ext.targetSdkVersion' apps/mobile/android/app/build.gradle
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('apps/mobile/android/app/build.gradle')
+          s=p.read_text()
+          s=s.replace('signingConfig signingConfigs.debug','')
+          p.write_text(s)
+          PY
+          if grep -R --line-number -E '<uses-permission[^>]+android.permission.(RECORD_AUDIO|READ_MEDIA_IMAGES|READ_MEDIA_VIDEO)' apps/mobile/android/app/src/main/AndroidManifest.xml | grep -v 'tools:node="remove"'; then exit 1; fi
+      - name: Build unsigned release AAB
+        working-directory: build-src/apps/mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:bundleRelease --no-daemon --stacktrace
+          AAB=app/build/outputs/bundle/release/app-release.aab
+          test -s "$AAB"
+          cp "$AAB" /tmp/first-check-unsigned-release.aab
+          sha256sum /tmp/first-check-unsigned-release.aab | tee /tmp/first-check-unsigned-release.sha256
+      - name: Upload unsigned AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-check-unsigned-store-aab
+          path: |
+            /tmp/first-check-unsigned-release.aab
+            /tmp/first-check-unsigned-release.sha256
+          retention-days: 7
+      - name: Upload generated lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-check-pnpm-lockfile
+          path: build-src/pnpm-lock.yaml
+          retention-days: 7
+      - name: Record build result
+        if: always()
+        run: |
+          git pull --rebase origin main || true
+          SHA=''
+          test ! -f /tmp/first-check-unsigned-release.sha256 || SHA="$(cut -d' ' -f1 /tmp/first-check-unsigned-release.sha256)"
+          printf '{"status":"%s","run_id":%s,"finished_at":"%s","unsigned_aab_sha256":"%s"}\n' '${{ job.status }}' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SHA" > ci/store-build-result.json
+          git add ci/store-build-result.json
+          git commit -m "ci: store build result ${{ github.run_id }} ${{ job.status }}" || true
+          git push origin HEAD:main
