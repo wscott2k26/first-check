@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'ci/apply-store-v3-hardening.mjs'
+      - 'ci/apply-storm-brand-v4.mjs'
+      - 'ci/storm-brand-v4.payload.part*'
       - '.github/workflows/android-store-public.yml'
   workflow_dispatch:
 
@@ -57,6 +59,8 @@ jobs:
           node ci/restore-workspace-config.mjs build-src
       - name: Apply V3 store hardening
         run: node ci/apply-store-v3-hardening.mjs build-src
+      - name: Apply Storm And Me V4 brand polish
+        run: node ci/apply-storm-brand-v4.mjs build-src
       - name: Install and lock dependencies
         working-directory: build-src
         run: |
@@ -75,11 +79,14 @@ jobs:
       - name: Generate Android API 36 project
         working-directory: build-src/apps/mobile
         run: pnpm exec expo prebuild --platform android --clean --no-install
-      - name: Verify package and strip debug signing from release
+      - name: Verify package, V4 version and strip debug signing from release
         working-directory: build-src
         run: |
           grep -q 'com.stormandme.firstcheck' apps/mobile/android/app/build.gradle
           grep -q 'targetSdkVersion rootProject.ext.targetSdkVersion' apps/mobile/android/app/build.gradle
+          grep -q 'versionCode 2' apps/mobile/android/app/build.gradle
+          grep -q 'Storm And Me Studios' apps/mobile/src/brand/brand-intro.tsx
+          grep -q '#07111F' apps/mobile/app.config.ts
           python - <<'PY'
           from pathlib import Path
           p=Path('apps/mobile/android/app/build.gradle')
