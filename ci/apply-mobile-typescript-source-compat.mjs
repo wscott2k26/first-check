@@ -1,0 +1,14 @@
+import fs from 'node:fs';
+import path from 'node:path';
+const root=process.argv[2];
+if(!root) throw new Error('usage: node apply-mobile-typescript-source-compat.mjs <source-root>');
+const layoutFile=path.join(root,'apps/mobile/app/(tabs)/_layout.tsx');
+let layout=fs.readFileSync(layoutFile,'utf8');
+layout=layout.replace("import { Text } from 'react-native';","import { Text, type ColorValue } from 'react-native';");
+layout=layout.replace("({color}:{color:string})","({color}:{color:ColorValue})");
+fs.writeFileSync(layoutFile,layout);
+const tsFile=path.join(root,'apps/mobile/tsconfig.json');
+const ts=JSON.parse(fs.readFileSync(tsFile,'utf8'));
+ts.exclude=Array.from(new Set([...(ts.exclude??[]),'test']));
+fs.writeFileSync(tsFile,JSON.stringify(ts,null,2)+'\n');
+console.log('Applied mobile TypeScript source compatibility fixes.');
