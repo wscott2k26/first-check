@@ -1,1 +1,2 @@
 Observable pull-request smoke verification for the First Check Android CI build.
+Retry 2: verify Expo SDK 57 package compatibility fix.
