@@ -1,0 +1,1 @@
+Payload chunks 00-11 uploaded. Reconstruction script validates both the compressed XZ fingerprint and the original mobile source ZIP fingerprint before use.
