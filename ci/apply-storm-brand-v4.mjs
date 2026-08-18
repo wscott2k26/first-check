@@ -7,6 +7,27 @@ const here=path.dirname(new URL(import.meta.url).pathname);
 const encoded=[1,2,3,4,5].map(i=>fs.readFileSync(path.join(here,`storm-brand-v4.payload.part${String(i).padStart(2,'0')}`),'utf8').trim()).join('');
 const payload=JSON.parse(zlib.gunzipSync(Buffer.from(encoded,'base64')).toString('utf8'));
 for(const [rel,content] of Object.entries(payload)){const file=p(rel);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,content);}
+// Expo SDK 57 / React Native 0.86 compatibility repairs caught by the release typecheck.
+{
+ const f=p('apps/mobile/app/(tabs)/_layout.tsx');let s=fs.readFileSync(f,'utf8');
+ s=s.replace("import { Text } from 'react-native';","import { Text, type ColorValue } from 'react-native';");
+ s=s.replaceAll('({color}:{color:string})','({color}:{color:ColorValue})');
+ fs.writeFileSync(f,s);
+}
+{
+ const f=p('apps/mobile/app/(tabs)/more.tsx');let s=fs.readFileSync(f,'utf8');
+ if(s.includes('s.link')&&!s.includes('link:{')){
+  const marker="copy:{color:colors.textSecondary,lineHeight:20,marginTop:7},workspace:";
+  if(!s.includes(marker))throw new Error('More screen link style insertion point missing');
+  s=s.replace(marker,"copy:{color:colors.textSecondary,lineHeight:20,marginTop:7},link:{color:colors.accentIndigo,fontSize:14,fontWeight:'800',marginTop:12},workspace:");
+ }
+ fs.writeFileSync(f,s);
+}
+{
+ const f=p('apps/mobile/src/brand/brand-intro.tsx');let s=fs.readFileSync(f,'utf8');
+ s=s.replaceAll('StyleSheet.absoluteFillObject','StyleSheet.absoluteFill');
+ fs.writeFileSync(f,s);
+}
 {const f=p('packages/ui/src/tokens/colors.ts');let s=fs.readFileSync(f,'utf8');if(!s.includes('textOnAccent:'))s=s.replace("  onAccent: '#FFFFFF',\n","  onAccent: '#FFFFFF',\n  textOnAccent: '#FFFFFF',\n");fs.writeFileSync(f,s);}
 const patchJson=(file)=>{const parsed=JSON.parse(fs.readFileSync(file,'utf8'));const expo=parsed.expo??parsed;expo.android??={};expo.android.versionCode=2;if(Array.isArray(expo.plugins))for(const plugin of expo.plugins)if(Array.isArray(plugin)&&plugin[0]==='expo-splash-screen'){plugin[1]??={};plugin[1].backgroundColor='#07111F';}fs.writeFileSync(file,JSON.stringify(parsed,null,2)+'\n');};
 const patchTs=(file)=>{let source=fs.readFileSync(file,'utf8');if(/versionCode\s*:\s*\d+/.test(source))source=source.replace(/versionCode\s*:\s*\d+/,'versionCode: 2');else if(/android\s*:\s*{/.test(source))source=source.replace(/android\s*:\s*{/,'android:{versionCode: 2,');else throw new Error('apps/mobile/app.config.ts: android config block not found');source=source.replace(/backgroundColor\s*:\s*['\"]#F6F8FC['\"]/g,"backgroundColor:'#07111F'");fs.writeFileSync(file,source);};
