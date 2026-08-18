@@ -74,6 +74,12 @@ jobs:
       - name: Verify Expo SDK 57 TypeScript toolchain
         run: node ci/verify-typescript-sdk57-contract.mjs build-src
 
+      - name: Remove deprecated mobile baseUrl
+        run: node ci/apply-mobile-tsconfig-sdk57-compat.mjs build-src
+
+      - name: Verify Expo SDK 57 mobile tsconfig
+        run: node ci/verify-mobile-tsconfig-sdk57-contract.mjs build-src
+
       - name: Restore shared workspace config
         run: node ci/restore-workspace-config.mjs build-src
 
