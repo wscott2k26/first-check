@@ -6,13 +6,18 @@ on:
     paths:
       - 'ci/**'
       - '.github/workflows/android-ci-smoke.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ci/**'
+      - '.github/workflows/android-ci-smoke.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: first-check-android-ci-smoke
+  group: first-check-android-ci-smoke-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
