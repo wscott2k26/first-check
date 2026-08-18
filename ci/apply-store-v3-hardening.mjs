@@ -36,7 +36,7 @@ mustReplace('apps/mobile/src/supabase/client.ts',"const url=process.env.EXPO_PUB
 mustReplace('apps/mobile/src/supabase/client.ts','auth:{autoRefreshToken:true,persistSession:false,detectSessionInUrl:false}','auth:{autoRefreshToken:true,persistSession:false,detectSessionInUrl:false,lock:processLock}');
 
 // Closed-run report recovery uses the proven idempotent /close route; the old /reports POST does not exist.
-mustReplace('apps/mobile/src/api/operations.ts',"export function generateReport(runId:string){return request<{report:{id:string;document:import('@first-check/schemas').DailyReportDocument;html:string}}>('POST',`/v1/check-runs/${runId}/reports`);","export async function generateReport(runId:string){const result=await closeCheckRun(runId);if(!result.report)throw new Error(result.reportError??'Report is unavailable.');return {report:result.report};}");
+mustReplace('apps/mobile/src/api/operations.ts',"export function generateReport(runId:string){return request<{report:{id:string;document:import('@first-check/schemas').DailyReportDocument;html:string}}>('POST',`/v1/check-runs/${runId}/reports`);}","export async function generateReport(runId:string){const result=await closeCheckRun(runId);if(!result.report)throw new Error(result.reportError??'Report is unavailable.');return {report:result.report};}");
 
 // Evidence pickers sometimes omit MIME on Android. Infer only the file types the API allows.
 {
