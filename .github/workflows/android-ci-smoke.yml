@@ -68,6 +68,12 @@ jobs:
       - name: Verify Expo SDK 57 package contract
         run: node ci/verify-expo-sdk57-package-contract.mjs build-src
 
+      - name: Pin Expo SDK 57 TypeScript toolchain
+        run: node ci/apply-typescript-sdk57-compat.mjs build-src
+
+      - name: Verify Expo SDK 57 TypeScript toolchain
+        run: node ci/verify-typescript-sdk57-contract.mjs build-src
+
       - name: Restore shared workspace config
         run: node ci/restore-workspace-config.mjs build-src
 
