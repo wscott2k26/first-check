@@ -1,0 +1,184 @@
+name: First Check Pro V5 CI
+
+on:
+  push:
+    branches: [first-check-pro-v5-ci]
+    paths:
+      - 'ci/apply-first-check-pro-v5.mjs'
+      - 'ci/apply-first-check-pro-v5-config-compat.mjs'
+      - '.github/workflows/android-pro-v5-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ci/apply-first-check-pro-v5.mjs'
+      - 'ci/apply-first-check-pro-v5-config-compat.mjs'
+      - '.github/workflows/android-pro-v5-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: first-check-pro-v5-ci
+  cancel-in-progress: false
+
+jobs:
+  verify-pro-v5:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout isolated Pro branch
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+          node --version
+          pnpm --version
+          java -version
+
+      - name: Reconstruct verified First Check source
+        run: bash ci/RECONSTRUCT.sh
+
+      - name: Reapply existing release compatibility and brand layers
+        run: |
+          node ci/apply-premium-mobile-theme.mjs build-src
+          node ci/apply-expo-sdk57-compat.mjs build-src
+          node ci/apply-typescript-sdk57-compat.mjs build-src
+          node ci/apply-mobile-tsconfig-sdk57-compat.mjs build-src
+          node ci/apply-mobile-typescript-source-compat.mjs build-src
+          node ci/restore-workspace-config.mjs build-src
+          node ci/apply-store-v3-hardening.mjs build-src
+          node ci/apply-storm-brand-v4.mjs build-src
+
+      - name: Apply First Check Pro V5
+        run: |
+          node ci/apply-first-check-pro-v5.mjs build-src
+          node ci/apply-first-check-pro-v5-config-compat.mjs build-src
+
+      - name: Expose legacy CI applicator to reconstructed brand tests
+        run: |
+          mkdir -p build-src/ci
+          cp ci/apply-storm-brand-v4.mjs build-src/ci/apply-storm-brand-v4.mjs
+
+      - name: Run deterministic Pro and brand contracts before install
+        working-directory: build-src
+        run: |
+          node --experimental-strip-types scripts/pro-access.test.mjs
+          node scripts/pro-provider-contract.test.mjs
+          node scripts/pro-ui-contract.test.mjs
+          node scripts/pro-release-contract.test.mjs
+          node --experimental-strip-types scripts/brand-polish.test.mjs
+
+      - name: Install and lock dependencies
+        working-directory: build-src
+        run: |
+          pnpm install --no-frozen-lockfile
+          test -s pnpm-lock.yaml
+          pnpm install --frozen-lockfile
+
+      - name: Build workspaces and typecheck Pro client
+        working-directory: build-src
+        run: |
+          pnpm --filter @first-check/schemas build
+          pnpm --filter @first-check/domain build
+          pnpm --filter @first-check/ui build
+          pnpm --filter @first-check/api-client build
+          pnpm --filter @first-check/mobile typecheck
+
+      - name: Expo dependency compatibility check
+        working-directory: build-src
+        run: pnpm --filter @first-check/mobile exec expo install --check
+
+      - name: Expo Doctor
+        working-directory: build-src/apps/mobile
+        run: pnpm dlx expo-doctor@latest
+
+      - name: Generate Android and iOS native projects
+        working-directory: build-src/apps/mobile
+        run: pnpm exec expo prebuild --clean --no-install
+
+      - name: Verify release identities and native RevenueCat presence
+        working-directory: build-src
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const assert = (condition, message) => { if (!condition) throw new Error(message); };
+          assert(fs.existsSync('apps/mobile/android'), 'Android native project missing');
+          assert(fs.existsSync('apps/mobile/ios'), 'iOS native project missing');
+          const gradle = fs.readFileSync('apps/mobile/android/app/build.gradle', 'utf8');
+          assert(gradle.includes('com.stormandme.firstcheck'), 'Android applicationId drift');
+          assert(/versionCode\s+3\b/.test(gradle), 'Android versionCode 3 missing');
+          const iosFiles = [];
+          const walk = (dir) => {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) walk(full);
+              else if (/\.(pbxproj|plist|xcconfig|entitlements)$/.test(entry.name)) iosFiles.push(full);
+            }
+          };
+          walk('apps/mobile/ios');
+          const iosText = iosFiles.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
+          assert(iosText.includes('com.stormandme.firstcheck'), 'iOS bundle identifier drift');
+          assert(iosText.includes('MARKETING_VERSION = 1.1.0') || iosText.includes('<string>1.1.0</string>'), 'iOS marketing version 1.1.0 missing');
+          assert(iosText.includes('CURRENT_PROJECT_VERSION = 1') || iosText.includes('<string>1</string>'), 'iOS build number 1 missing');
+          const resolved = require.resolve('react-native-purchases/package.json', { paths: [path.resolve('apps/mobile')] });
+          console.log('RevenueCat package:', resolved);
+          const purchases = JSON.parse(fs.readFileSync(resolved, 'utf8'));
+          assert(purchases.version === '10.5.0', `RevenueCat version drift: ${purchases.version}`);
+          const intro = fs.readFileSync('apps/mobile/src/brand/brand-intro.tsx', 'utf8');
+          assert(intro.includes('Storm And Me Studios'), 'Storm And Me intro drift');
+          const mobilePackage = JSON.parse(fs.readFileSync('apps/mobile/package.json', 'utf8'));
+          assert(mobilePackage.dependencies?.['react-native-purchases'] === '10.5.0', 'RevenueCat mobile dependency drift');
+          console.log('Native identities + RevenueCat verified.');
+          NODE
+
+      - name: Strip debug signing from Android release
+        working-directory: build-src
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('apps/mobile/android/app/build.gradle')
+          s=p.read_text()
+          s=s.replace('signingConfig signingConfigs.debug','')
+          p.write_text(s)
+          PY
+
+      - name: Build unsigned Android Pro AAB
+        working-directory: build-src/apps/mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:bundleRelease --no-daemon --stacktrace
+          AAB=app/build/outputs/bundle/release/app-release.aab
+          test -s "$AAB"
+          cp "$AAB" /tmp/first-check-pro-v5-unsigned.aab
+          sha256sum /tmp/first-check-pro-v5-unsigned.aab | tee /tmp/first-check-pro-v5-unsigned.sha256
+
+      - name: Package generated iOS project for structural verification
+        working-directory: build-src/apps/mobile
+        run: |
+          tar -czf /tmp/first-check-pro-v5-ios-prebuild.tgz ios
+          sha256sum /tmp/first-check-pro-v5-ios-prebuild.tgz | tee /tmp/first-check-pro-v5-ios-prebuild.sha256
+
+      - name: Upload Pro verification artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-check-pro-v5-verification
+          path: |
+            /tmp/first-check-pro-v5-unsigned.aab
+            /tmp/first-check-pro-v5-unsigned.sha256
+            /tmp/first-check-pro-v5-ios-prebuild.tgz
+            /tmp/first-check-pro-v5-ios-prebuild.sha256
+            build-src/pnpm-lock.yaml
+          retention-days: 7
