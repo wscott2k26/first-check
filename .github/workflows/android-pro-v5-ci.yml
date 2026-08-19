@@ -5,11 +5,13 @@ on:
     branches: [first-check-pro-v5-ci]
     paths:
       - 'ci/apply-first-check-pro-v5.mjs'
+      - 'ci/apply-first-check-pro-v5-config-compat.mjs'
       - '.github/workflows/android-pro-v5-ci.yml'
   pull_request:
     branches: [main]
     paths:
       - 'ci/apply-first-check-pro-v5.mjs'
+      - 'ci/apply-first-check-pro-v5-config-compat.mjs'
       - '.github/workflows/android-pro-v5-ci.yml'
   workflow_dispatch:
 
@@ -60,7 +62,9 @@ jobs:
           node ci/apply-storm-brand-v4.mjs build-src
 
       - name: Apply First Check Pro V5
-        run: node ci/apply-first-check-pro-v5.mjs build-src
+        run: |
+          node ci/apply-first-check-pro-v5.mjs build-src
+          node ci/apply-first-check-pro-v5-config-compat.mjs build-src
 
       - name: Expose legacy CI applicator to reconstructed brand tests
         run: |
@@ -127,6 +131,8 @@ jobs:
           walk('apps/mobile/ios');
           const iosText = iosFiles.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
           assert(iosText.includes('com.stormandme.firstcheck'), 'iOS bundle identifier drift');
+          assert(iosText.includes('MARKETING_VERSION = 1.1.0') || iosText.includes('<string>1.1.0</string>'), 'iOS marketing version 1.1.0 missing');
+          assert(iosText.includes('CURRENT_PROJECT_VERSION = 1') || iosText.includes('<string>1</string>'), 'iOS build number 1 missing');
           const resolved = require.resolve('react-native-purchases/package.json', { paths: [path.resolve('apps/mobile')] });
           console.log('RevenueCat package:', resolved);
           const purchases = JSON.parse(fs.readFileSync(resolved, 'utf8'));
