@@ -6,6 +6,11 @@ on:
     paths:
       - 'ci/apply-first-check-pro-v5.mjs'
       - '.github/workflows/android-pro-v5-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ci/apply-first-check-pro-v5.mjs'
+      - '.github/workflows/android-pro-v5-ci.yml'
   workflow_dispatch:
 
 permissions:
