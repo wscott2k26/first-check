@@ -107,14 +107,36 @@ jobs:
       - name: Verify release identities and native RevenueCat presence
         working-directory: build-src
         run: |
-          test -d apps/mobile/android
-          test -d apps/mobile/ios
-          grep -q 'com.stormandme.firstcheck' apps/mobile/android/app/build.gradle
-          grep -q 'versionCode 3' apps/mobile/android/app/build.gradle
-          grep -R -q 'com.stormandme.firstcheck' apps/mobile/ios
-          test -d node_modules/.pnpm/react-native-purchases@10.5.0*/node_modules/react-native-purchases || test -d apps/mobile/node_modules/react-native-purchases
-          grep -q 'Storm And Me Studios' apps/mobile/src/brand/brand-intro.tsx
-          grep -q 'react-native-purchases' apps/mobile/package.json
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const assert = (condition, message) => { if (!condition) throw new Error(message); };
+          assert(fs.existsSync('apps/mobile/android'), 'Android native project missing');
+          assert(fs.existsSync('apps/mobile/ios'), 'iOS native project missing');
+          const gradle = fs.readFileSync('apps/mobile/android/app/build.gradle', 'utf8');
+          assert(gradle.includes('com.stormandme.firstcheck'), 'Android applicationId drift');
+          assert(/versionCode\s+3\b/.test(gradle), 'Android versionCode 3 missing');
+          const iosFiles = [];
+          const walk = (dir) => {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) walk(full);
+              else if (/\.(pbxproj|plist|xcconfig|entitlements)$/.test(entry.name)) iosFiles.push(full);
+            }
+          };
+          walk('apps/mobile/ios');
+          const iosText = iosFiles.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
+          assert(iosText.includes('com.stormandme.firstcheck'), 'iOS bundle identifier drift');
+          const resolved = require.resolve('react-native-purchases/package.json', { paths: [path.resolve('apps/mobile')] });
+          console.log('RevenueCat package:', resolved);
+          const purchases = JSON.parse(fs.readFileSync(resolved, 'utf8'));
+          assert(purchases.version === '10.5.0', `RevenueCat version drift: ${purchases.version}`);
+          const intro = fs.readFileSync('apps/mobile/src/brand/brand-intro.tsx', 'utf8');
+          assert(intro.includes('Storm And Me Studios'), 'Storm And Me intro drift');
+          const mobilePackage = JSON.parse(fs.readFileSync('apps/mobile/package.json', 'utf8'));
+          assert(mobilePackage.dependencies?.['react-native-purchases'] === '10.5.0', 'RevenueCat mobile dependency drift');
+          console.log('Native identities + RevenueCat verified.');
+          NODE
 
       - name: Strip debug signing from Android release
         working-directory: build-src
