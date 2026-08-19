@@ -62,6 +62,11 @@ jobs:
       - name: Apply First Check Pro V5
         run: node ci/apply-first-check-pro-v5.mjs build-src
 
+      - name: Expose legacy CI applicator to reconstructed brand tests
+        run: |
+          mkdir -p build-src/ci
+          cp ci/apply-storm-brand-v4.mjs build-src/ci/apply-storm-brand-v4.mjs
+
       - name: Run deterministic Pro and brand contracts before install
         working-directory: build-src
         run: |
