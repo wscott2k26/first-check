@@ -1,0 +1,120 @@
+name: First Check 1.0.1 Stabilized Runtime Recheck
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ci/run-emergency-v5-smoke-stable.sh'
+      - '.github/workflows/android-emergency-v5-runtime-recheck.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: first-check-v101-stable-runtime
+  cancel-in-progress: true
+
+jobs:
+  record-start:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record start
+        run: |
+          printf '{"status":"started","run_id":%s,"source_run":32379877049,"release":"1.0.1","version_code":3,"unsigned_aab_sha256":"e9c944c4e4edeb8a8862b90dcc4257abefc69de69f9f9db5b0e578aefc9f6a38"}\n' '${{ github.run_id }}' > ci/emergency-v5-stable-runtime.json
+          git config user.name 'First Check CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add ci/emergency-v5-stable-runtime.json
+          git commit -m "ci: stable runtime start ${{ github.run_id }}" || true
+          git push origin HEAD:main
+
+  runtime:
+    needs: record-start
+    name: stabilized-api-${{ matrix.api }}
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [35, 36]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Download exact emergency AAB built by recovery run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/emergency-v5
+          gh run download 32379877049 --repo "${{ github.repository }}" -n first-check-v1.0.1-vc3-unsigned-aab -D /tmp/emergency-v5
+          test -s /tmp/emergency-v5/First-Check-v1.0.1-vc3-UNSIGNED.aab
+          ACTUAL="$(shasum -a 256 /tmp/emergency-v5/First-Check-v1.0.1-vc3-UNSIGNED.aab | awk '{print $1}')"
+          EXPECTED='e9c944c4e4edeb8a8862b90dcc4257abefc69de69f9f9db5b0e578aefc9f6a38'
+          echo "AAB_SHA256=$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Convert exact AAB to installable universal APK
+        run: |
+          curl -fsSL -o /tmp/bundletool.jar https://github.com/google/bundletool/releases/download/1.18.1/bundletool-all-1.18.1.jar
+          keytool -genkeypair -v -keystore /tmp/debug.keystore -storepass android -alias androiddebugkey -keypass android -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -keysize 2048 -validity 10000
+          java -jar /tmp/bundletool.jar build-apks \
+            --bundle=/tmp/emergency-v5/First-Check-v1.0.1-vc3-UNSIGNED.aab \
+            --output=/tmp/emergency-v5.apks \
+            --mode=universal \
+            --ks=/tmp/debug.keystore \
+            --ks-key-alias=androiddebugkey \
+            --ks-pass=pass:android \
+            --key-pass=pass:android \
+            --overwrite
+          unzip -q /tmp/emergency-v5.apks universal.apk -d /tmp/emergency-v5
+          test -s /tmp/emergency-v5/universal.apk
+
+      - name: Stabilized five-launch First Check gate
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          disable-animations: true
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          script: bash ci/run-emergency-v5-smoke-stable.sh ${{ matrix.api }} /tmp/emergency-v5/universal.apk
+
+      - name: Upload stabilized runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-check-v1.0.1-stable-runtime-api-${{ matrix.api }}
+          path: |
+            /tmp/first-check-v101-stable-api-${{ matrix.api }}.logcat.txt
+            /tmp/first-check-v101-stable-api-${{ matrix.api }}.ui.xml
+            /tmp/first-check-v101-stable-api-${{ matrix.api }}.png
+            /tmp/first-check-v101-start-${{ matrix.api }}-*.txt
+            /tmp/android-system-dialog-${{ matrix.api }}-*.xml
+          retention-days: 7
+
+  gate:
+    if: always()
+    needs: [record-start, runtime]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record stabilized result
+        run: |
+          STATUS='failure'
+          if test '${{ needs.runtime.result }}' = 'success'; then STATUS='success'; fi
+          git pull --rebase origin main || true
+          printf '{"status":"%s","run_id":%s,"source_run":32379877049,"release":"1.0.1","version_code":3,"runtime":"%s","apis":[35,36],"cold_launches_per_api":5,"unsigned_aab_sha256":"e9c944c4e4edeb8a8862b90dcc4257abefc69de69f9f9db5b0e578aefc9f6a38"}\n' "$STATUS" '${{ github.run_id }}' '${{ needs.runtime.result }}' > ci/emergency-v5-stable-runtime.json
+          git config user.name 'First Check CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add ci/emergency-v5-stable-runtime.json
+          git commit -m "ci: stable runtime result ${{ github.run_id }} $STATUS" || true
+          git push origin HEAD:main
+          test "$STATUS" = success
+          echo 'PASS: exact First Check 1.0.1 code-3 AAB cleared stabilized API35/API36 runtime gates.'
