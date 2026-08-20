@@ -65,12 +65,20 @@ jobs:
           node ci/apply-store-v3-hardening.mjs build-src
           node ci/apply-storm-brand-v4.mjs build-src
 
-      - name: Verify rejected V4 brand baseline before emergency change
+      - name: Verify rejected V4 identity and brand baseline
         run: |
-          mkdir -p build-src/ci
-          cp ci/apply-storm-brand-v4.mjs build-src/ci/apply-storm-brand-v4.mjs
-          cd build-src
-          node --experimental-strip-types --test scripts/brand-polish.test.mjs
+          test ! -f build-src/apps/mobile/app/index.tsx
+          grep -q 'Storm And Me Studios' build-src/apps/mobile/src/brand/brand-intro.tsx
+          grep -q 'Vibration.vibrate' build-src/apps/mobile/src/brand/brand-intro.tsx
+          grep -q "brandNavy: '#07111F'" build-src/packages/ui/src/tokens/colors.ts
+          grep -q 'colors.glass' build-src/apps/mobile/app/sign-in.tsx
+          node - <<'NODE'
+          const fs=require('fs');
+          const j=JSON.parse(fs.readFileSync('build-src/apps/mobile/app.json','utf8'));
+          if(j.expo.version!=='1.0.0')throw new Error(`expected rejected V4 version 1.0.0, got ${j.expo.version}`);
+          if(j.expo.android.versionCode!==2)throw new Error(`expected rejected V4 code 2, got ${j.expo.android.versionCode}`);
+          console.log('PASS: exact rejected V4 identity/brand baseline reconstructed.');
+          NODE
 
       - name: Prove startup regression fails on rejected V4 baseline
         run: |
