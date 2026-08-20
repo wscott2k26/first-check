@@ -43,7 +43,7 @@ export default function IndexScreen() {
   write(rel, source);
 }
 
-// Android code 3 is now occupied by the crash-recovery submission.
+// Android code 3 is occupied by the crash-recovery submission.
 // Pro remains 1.1.0 but advances to code 4. iOS build stays 2.
 {
   const rel = 'apps/mobile/app.config.ts';
@@ -71,7 +71,7 @@ export default function IndexScreen() {
   write(rel, JSON.stringify(parsed, null, 2) + '\n');
 }
 
-// Expo's compatibility checker is a release gate. Pin the exact SDK 57 patch line it currently requires.
+// Expo's compatibility checker is a release gate. Pin the exact SDK 57 patch line it requires.
 {
   const rel = 'apps/mobile/package.json';
   const pkg = JSON.parse(read(rel));
@@ -107,6 +107,24 @@ for (const rel of [
     .replace(/code3/g, 'code4')
     .replace(/code 3/g, 'code 4');
   write(rel, source);
+}
+
+// Synchronize the deterministic store contract with Expo's current SDK 57 patch set.
+{
+  const rel = 'scripts/store-release-contract.mjs';
+  if (fs.existsSync(p(rel))) {
+    let source = read(rel);
+    const replacements = new Map([
+      ['~57.0.9', '~57.0.15'],
+      ['~57.0.14', '~57.0.15'],
+      ['~57.0.11', '~57.0.12'],
+      ['~57.0.4', '~57.0.5'],
+      ['~57.0.12', '~57.0.13'],
+      ['~57.0.6', '~57.0.7'],
+    ]);
+    for (const [oldVersion, newVersion] of replacements) source = source.split(oldVersion).join(newVersion);
+    write(rel, source);
+  }
 }
 
 // Visible receipt on the sign-in experience.
