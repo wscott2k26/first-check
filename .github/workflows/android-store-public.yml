@@ -65,6 +65,10 @@ jobs:
         run: node ci/apply-storm-brand-v4.mjs build-src
       - name: Apply First Check Pro V1.1
         run: node ci/apply-first-check-pro.mjs build-src
+      - name: Stage CI applicator contract for tests
+        run: |
+          mkdir -p build-src/ci
+          cp ci/apply-storm-brand-v4.mjs build-src/ci/apply-storm-brand-v4.mjs
       - name: Run Pro and brand regression tests
         working-directory: build-src
         run: |
