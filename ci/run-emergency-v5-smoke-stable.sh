@@ -123,8 +123,13 @@ for i in 1 2 3 4 5; do
     exit 25
   fi
 
-  if ! adb shell dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp' | grep -q "$PKG"; then
-    echo 'FAIL: First Check is alive but not foreground after the stabilized launch.'
+  # UiAutomator dumps the currently interactive window. After unrelated Android dialogs have been
+  # safely removed, requiring the current UI hierarchy itself to belong to First Check is a more
+  # reliable foreground proof on Android 15/16 than legacy dumpsys-window focus fields.
+  if ! grep -q "package=\"$PKG\"" "$UI"; then
+    echo 'FAIL: the current interactive window does not belong to First Check.'
+    cat "$UI" || true
+    adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity' || true
     exit 26
   fi
 done
