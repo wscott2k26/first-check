@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/android-v4-exact-aab-macos-smoke.yml'
+      - 'ci/run-v4-exact-aab-smoke.sh'
   workflow_dispatch:
 
 permissions:
@@ -85,32 +86,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          script: |
-            set -e
-            LOG=/tmp/first-check-v4-api-${{ matrix.api }}.logcat.txt
-            : > "$LOG"
-            adb install -r /tmp/v4apks/universal.apk
-            adb shell pm clear com.stormandme.firstcheck >/dev/null || true
-            for i in 1 2 3 4 5; do
-              echo "=== COLD LAUNCH $i / API ${{ matrix.api }} ==="
-              adb logcat -c
-              adb shell am force-stop com.stormandme.firstcheck
-              adb shell monkey -p com.stormandme.firstcheck -c android.intent.category.LAUNCHER 1 >/dev/null
-              sleep 8
-              adb logcat -d -v threadtime >> "$LOG"
-              PID="$(adb shell pidof com.stormandme.firstcheck | tr -d '\r')"
-              echo "PID=$PID"
-              if [ -z "$PID" ]; then
-                echo "FAIL: First Check process died on launch $i"
-                exit 21
-              fi
-              if grep -qE 'FATAL EXCEPTION|Fatal signal|Process: com\.stormandme\.firstcheck|NoSuchMethodError' "$LOG"; then
-                echo "FAIL: fatal crash signature on launch $i"
-                exit 22
-              fi
-            done
-            adb exec-out screencap -p > /tmp/first-check-v4-api-${{ matrix.api }}.png
-            echo 'RUNTIME_SMOKE=PASS'
+          script: bash ci/run-v4-exact-aab-smoke.sh ${{ matrix.api }}
 
       - name: Upload runtime evidence
         if: always()
