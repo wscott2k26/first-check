@@ -17,9 +17,20 @@ must(indexSource.includes('<Redirect href="/today"'),'Startup regression: signed
 const layout=read('apps/mobile/app/_layout.tsx');
 must(layout.includes('<Stack.Screen name="index" />'),'Startup regression: root index route is not registered in the root Stack.');
 
-const appJson=JSON.parse(read('apps/mobile/app.json'));
-must(appJson.expo?.version==='1.0.1',`Startup regression: expected version 1.0.1, got ${appJson.expo?.version}`);
-must(appJson.expo?.android?.versionCode===3,`Startup regression: expected Android versionCode 3, got ${appJson.expo?.android?.versionCode}`);
+let identityChecked=false;
+if(fs.existsSync(p('apps/mobile/app.config.ts'))){
+  const config=read('apps/mobile/app.config.ts');
+  must(/version\s*:\s*['"]1\.0\.1['"]/.test(config),'Startup regression: app.config.ts is not version 1.0.1.');
+  must(/versionCode\s*:\s*3\b/.test(config),'Startup regression: app.config.ts is not Android versionCode 3.');
+  identityChecked=true;
+}
+if(fs.existsSync(p('apps/mobile/app.json'))){
+  const appJson=JSON.parse(read('apps/mobile/app.json'));
+  must(appJson.expo?.version==='1.0.1',`Startup regression: expected app.json version 1.0.1, got ${appJson.expo?.version}`);
+  must(appJson.expo?.android?.versionCode===3,`Startup regression: expected app.json Android versionCode 3, got ${appJson.expo?.android?.versionCode}`);
+  identityChecked=true;
+}
+must(identityChecked,'Startup regression: no Expo app config exists.');
 
 const signIn=read('apps/mobile/app/sign-in.tsx');
 must(signIn.includes('Sign in to First Check'),'Startup regression: polished First Check sign-in destination is missing.');
