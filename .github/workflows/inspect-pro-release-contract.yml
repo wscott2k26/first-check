@@ -30,12 +30,12 @@ jobs:
           node ci/apply-store-v3-hardening.mjs build-src
           node ci/apply-storm-brand-v4.mjs build-src
           node ci/apply-first-check-pro.mjs build-src
-      - name: Record dependency contract lines
+      - name: Record dependency contract section
         run: |
-          grep -n "Mobile expo" build-src/scripts/store-release-contract.mjs > ci/pro-release-dependency-contract.txt || true
+          sed -n '35,65p' build-src/scripts/store-release-contract.mjs > ci/pro-release-dependency-contract.txt
           git pull --rebase origin main || true
           git config user.name 'First Check CI'
           git config user.email 'actions@users.noreply.github.com'
           git add ci/pro-release-dependency-contract.txt
-          git commit -m "ci: record Pro release dependency contract" || true
+          git commit -m "ci: record Pro release dependency contract section" || true
           git push origin HEAD:main
