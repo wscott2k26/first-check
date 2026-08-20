@@ -1,1 +1,1 @@
-{"status":"success","run_id":32322809743,"finished_at":"2026-08-20T02:14:03Z","unsigned_aab_sha256":"9cd1060daf7ef6a4c50645780e9750246f6f00294dc3123118768b605900b52f"}
+{"status":"failure","run_id":32394330047,"finished_at":"2026-08-20T16:51:53Z","release":"1.1.0","version_code":4,"ios_build":"2","unsigned_aab_sha256":""}
