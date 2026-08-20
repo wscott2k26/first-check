@@ -41,18 +41,9 @@ export default function IndexScreen() {
   write(rel,source);
 }
 
-// Emergency store replacement identity. Keep Pro out of this patch; code 3 belongs to crash/startup recovery.
-{
-  const rel='apps/mobile/app.json';
-  const parsed=JSON.parse(read(rel));
-  if(!parsed.expo)throw new Error('Emergency startup fix: app.json expo object missing.');
-  parsed.expo.version='1.0.1';
-  parsed.expo.android??={};
-  parsed.expo.android.versionCode=3;
-  write(rel,JSON.stringify(parsed,null,2)+'\n');
-}
+let identityPatched=false;
 
-// app.config.ts takes precedence over app.json when present, so pin the same release identity there too.
+// app.config.ts is the source of truth in the CI lineage that produced the Play AAB.
 {
   const rel='apps/mobile/app.config.ts';
   if(fs.existsSync(p(rel))){
@@ -63,8 +54,24 @@ export default function IndexScreen() {
     else if(/android\s*:\s*{/.test(source)) source=source.replace(/android\s*:\s*{/,'android:{versionCode: 3,');
     else throw new Error('Emergency startup fix: app.config.ts android block not found.');
     write(rel,source);
+    identityPatched=true;
   }
 }
+
+// Keep app.json aligned when a source backup carries one, without requiring it in the CI reconstruction.
+{
+  const rel='apps/mobile/app.json';
+  if(fs.existsSync(p(rel))){
+    const parsed=JSON.parse(read(rel));
+    if(!parsed.expo)throw new Error('Emergency startup fix: app.json expo object missing.');
+    parsed.expo.version='1.0.1';
+    parsed.expo.android??={};
+    parsed.expo.android.versionCode=3;
+    write(rel,JSON.stringify(parsed,null,2)+'\n');
+    identityPatched=true;
+  }
+}
+if(!identityPatched)throw new Error('Emergency startup fix: no Expo app config found.');
 
 // Keep the visible version receipt honest on the polished sign-in screen.
 {
