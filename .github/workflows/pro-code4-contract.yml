@@ -23,7 +23,7 @@ jobs:
           node-version: 24.19.0
       - name: Reconstruct V4 source
         run: bash ci/RECONSTRUCT.sh
-      - name: Apply existing compatibility and brand layers
+      - name: Apply existing compatibility, brand, and Pro layers
         run: |
           node ci/apply-premium-mobile-theme.mjs build-src
           node ci/apply-expo-sdk57-compat.mjs build-src
@@ -34,6 +34,7 @@ jobs:
           node ci/apply-store-v3-hardening.mjs build-src
           node ci/apply-storm-brand-v4.mjs build-src
           node ci/apply-first-check-pro.mjs build-src
+          node ci/apply-first-check-pro-code4.mjs build-src
       - name: Pro code 4 + clean-launch contract
         id: code4
         run: node ci/assert-first-check-pro-code4.mjs build-src
