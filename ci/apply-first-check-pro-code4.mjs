@@ -115,12 +115,12 @@ for (const rel of [
   if (fs.existsSync(p(rel))) {
     let source = read(rel);
     const replacements = new Map([
-      ['~57.0.9', '~57.0.15'],
+      ['~57.0.12', '~57.0.13'],
       ['~57.0.14', '~57.0.15'],
       ['~57.0.11', '~57.0.12'],
-      ['~57.0.4', '~57.0.5'],
-      ['~57.0.12', '~57.0.13'],
+      ['~57.0.9', '~57.0.15'],
       ['~57.0.6', '~57.0.7'],
+      ['~57.0.4', '~57.0.5'],
     ]);
     for (const [oldVersion, newVersion] of replacements) source = source.split(oldVersion).join(newVersion);
     write(rel, source);
