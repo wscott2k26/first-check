@@ -72,13 +72,9 @@ jobs:
           grep -q 'Vibration.vibrate' build-src/apps/mobile/src/brand/brand-intro.tsx
           grep -q "brandNavy: '#07111F'" build-src/packages/ui/src/tokens/colors.ts
           grep -q 'colors.glass' build-src/apps/mobile/app/sign-in.tsx
-          node - <<'NODE'
-          const fs=require('fs');
-          const j=JSON.parse(fs.readFileSync('build-src/apps/mobile/app.json','utf8'));
-          if(j.expo.version!=='1.0.0')throw new Error(`expected rejected V4 version 1.0.0, got ${j.expo.version}`);
-          if(j.expo.android.versionCode!==2)throw new Error(`expected rejected V4 code 2, got ${j.expo.android.versionCode}`);
-          console.log('PASS: exact rejected V4 identity/brand baseline reconstructed.');
-          NODE
+          grep -Eq "version\s*:\s*['\"]1\.0\.0['\"]" build-src/apps/mobile/app.config.ts
+          grep -Eq 'versionCode\s*:\s*2\b' build-src/apps/mobile/app.config.ts
+          echo 'PASS: exact rejected V4 identity/brand baseline reconstructed.'
 
       - name: Prove startup regression fails on rejected V4 baseline
         run: |
