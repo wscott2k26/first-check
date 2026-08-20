@@ -1,0 +1,215 @@
+name: First Check 1.0.1 Emergency Store Recovery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ci/apply-emergency-v5-startup-fix.mjs'
+      - 'ci/startup-route-regression.mjs'
+      - 'ci/run-emergency-v5-smoke.sh'
+      - '.github/workflows/android-emergency-v5-store.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: first-check-emergency-v5-store
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+          pnpm --version
+          java -version
+
+      - name: Reconstruct exact V4 source lineage
+        run: |
+          bash ci/RECONSTRUCT.sh
+          node ci/apply-premium-mobile-theme.mjs build-src
+          node ci/apply-expo-sdk57-compat.mjs build-src
+          node ci/apply-typescript-sdk57-compat.mjs build-src
+          node ci/apply-mobile-tsconfig-sdk57-compat.mjs build-src
+          node ci/apply-mobile-typescript-source-compat.mjs build-src
+          node ci/restore-workspace-config.mjs build-src
+          node ci/apply-store-v3-hardening.mjs build-src
+          node ci/apply-storm-brand-v4.mjs build-src
+
+      - name: Verify rejected V4 brand baseline before emergency change
+        run: |
+          mkdir -p build-src/ci
+          cp ci/apply-storm-brand-v4.mjs build-src/ci/apply-storm-brand-v4.mjs
+          cd build-src
+          node --experimental-strip-types --test scripts/brand-polish.test.mjs
+
+      - name: Prove startup regression fails on rejected V4 baseline
+        run: |
+          if node ci/startup-route-regression.mjs build-src; then
+            echo 'ERROR: rejected V4 unexpectedly passed the startup regression.'
+            exit 1
+          fi
+          echo 'EXPECTED RED: rejected V4 has no valid clean-launch root route / 1.0.1 code 3 contract.'
+
+      - name: Apply emergency startup fix only
+        run: node ci/apply-emergency-v5-startup-fix.mjs build-src
+
+      - name: Verify startup regression now passes
+        run: node ci/startup-route-regression.mjs build-src
+
+      - name: Verify no Pro billing code entered emergency release
+        run: |
+          if grep -q 'react-native-purchases' build-src/apps/mobile/package.json; then
+            echo 'ERROR: Pro billing dependency leaked into emergency recovery release.'
+            exit 1
+          fi
+          test ! -f build-src/apps/mobile/src/billing/revenuecat.ts
+
+      - name: Install dependencies reproducibly
+        working-directory: build-src
+        run: |
+          pnpm install --no-frozen-lockfile
+          test -s pnpm-lock.yaml
+          pnpm install --frozen-lockfile
+
+      - name: Build shared packages and typecheck mobile
+        working-directory: build-src
+        run: |
+          pnpm --filter @first-check/schemas build
+          pnpm --filter @first-check/domain build
+          pnpm --filter @first-check/ui build
+          pnpm --filter @first-check/api-client build
+          pnpm --filter @first-check/mobile typecheck
+          pnpm --filter @first-check/mobile exec expo install --check
+
+      - name: Generate Android API 36 project
+        working-directory: build-src/apps/mobile
+        run: pnpm exec expo prebuild --platform android --clean --no-install
+
+      - name: Verify emergency release identity and remove debug release signing
+        working-directory: build-src
+        run: |
+          grep -q 'com.stormandme.firstcheck' apps/mobile/android/app/build.gradle
+          grep -q 'versionCode 3' apps/mobile/android/app/build.gradle
+          grep -q 'versionName "1.0.1"' apps/mobile/android/app/build.gradle
+          grep -q 'targetSdkVersion rootProject.ext.targetSdkVersion' apps/mobile/android/app/build.gradle
+          grep -q 'Storm And Me Studios' apps/mobile/src/brand/brand-intro.tsx
+          grep -q '<Stack.Screen name="index" />' apps/mobile/app/_layout.tsx
+          grep -q '<Redirect href="/sign-in"' apps/mobile/app/index.tsx
+          grep -q '<Redirect href="/today"' apps/mobile/app/index.tsx
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('apps/mobile/android/app/build.gradle')
+          s=p.read_text()
+          s=s.replace('signingConfig signingConfigs.debug','')
+          p.write_text(s)
+          PY
+          if grep -R --line-number -E '<uses-permission[^>]+android.permission.(RECORD_AUDIO|READ_MEDIA_IMAGES|READ_MEDIA_VIDEO)' apps/mobile/android/app/src/main/AndroidManifest.xml | grep -v 'tools:node="remove"'; then exit 1; fi
+
+      - name: Build unsigned emergency AAB
+        working-directory: build-src/apps/mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:bundleRelease --no-daemon --stacktrace
+          AAB=app/build/outputs/bundle/release/app-release.aab
+          test -s "$AAB"
+          cp "$AAB" /tmp/First-Check-v1.0.1-vc3-UNSIGNED.aab
+          sha256sum /tmp/First-Check-v1.0.1-vc3-UNSIGNED.aab | tee /tmp/First-Check-v1.0.1-vc3-UNSIGNED.sha256
+
+      - name: Upload unsigned emergency AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-check-v1.0.1-vc3-unsigned-aab
+          path: |
+            /tmp/First-Check-v1.0.1-vc3-UNSIGNED.aab
+            /tmp/First-Check-v1.0.1-vc3-UNSIGNED.sha256
+          retention-days: 7
+
+  runtime:
+    needs: build
+    name: runtime-api-${{ matrix.api }}
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [35, 36]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Download exact emergency AAB from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: first-check-v1.0.1-vc3-unsigned-aab
+          path: /tmp/emergency-v5
+
+      - name: Convert AAB to installable universal APK
+        run: |
+          test -s /tmp/emergency-v5/First-Check-v1.0.1-vc3-UNSIGNED.aab
+          curl -fsSL -o /tmp/bundletool.jar https://github.com/google/bundletool/releases/download/1.18.1/bundletool-all-1.18.1.jar
+          keytool -genkeypair -v -keystore /tmp/debug.keystore -storepass android -alias androiddebugkey -keypass android -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -keysize 2048 -validity 10000
+          java -jar /tmp/bundletool.jar build-apks \
+            --bundle=/tmp/emergency-v5/First-Check-v1.0.1-vc3-UNSIGNED.aab \
+            --output=/tmp/emergency-v5.apks \
+            --mode=universal \
+            --ks=/tmp/debug.keystore \
+            --ks-key-alias=androiddebugkey \
+            --ks-pass=pass:android \
+            --key-pass=pass:android \
+            --overwrite
+          unzip -q /tmp/emergency-v5.apks universal.apk -d /tmp/emergency-v5
+          test -s /tmp/emergency-v5/universal.apk
+
+      - name: Five clean cold launches with app-scoped crash detection
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          script: bash ci/run-emergency-v5-smoke.sh ${{ matrix.api }} /tmp/emergency-v5/universal.apk
+
+      - name: Upload runtime and visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-check-v1.0.1-runtime-api-${{ matrix.api }}
+          path: |
+            /tmp/first-check-emergency-v5-api-${{ matrix.api }}.logcat.txt
+            /tmp/first-check-emergency-v5-api-${{ matrix.api }}.ui.xml
+            /tmp/first-check-emergency-v5-api-${{ matrix.api }}.png
+            /tmp/first-check-start-${{ matrix.api }}-*.txt
+          retention-days: 7
+
+  release-gate:
+    if: always()
+    needs: [build, runtime]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Final emergency release gate
+        run: |
+          echo "build=${{ needs.build.result }}"
+          echo "runtime=${{ needs.runtime.result }}"
+          test '${{ needs.build.result }}' = 'success'
+          test '${{ needs.runtime.result }}' = 'success'
+          echo 'PASS: First Check 1.0.1 code 3 cleared build + API35/API36 cold-launch gates.'
