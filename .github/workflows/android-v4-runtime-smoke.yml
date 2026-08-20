@@ -86,7 +86,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            set -o pipefail
+            set -e
             adb install -r /tmp/first-check-v4-release.apk
             adb logcat -c
             adb shell am force-stop com.stormandme.firstcheck
