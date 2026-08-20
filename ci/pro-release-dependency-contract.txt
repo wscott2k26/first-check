@@ -1,0 +1,31 @@
+  must(/buildNumber\s*:\s*['\"]2['\"]/.test(dynamicConfig),'Dynamic Expo config must carry iOS buildNumber 2');
+}
+
+for(const p of ['apps/mobile/assets/icon.png','apps/mobile/assets/adaptive-icon.png']){
+  must(exists(p),`Missing ${p}`);
+  must(fs.statSync(path.join(root,p)).size>1000,`${p} looks empty`);
+}
+
+const mobilePkg=json('apps/mobile/package.json');
+for(const [name,version] of Object.entries({...mobilePkg.dependencies,...mobilePkg.devDependencies})) must(version!=='latest',`Mobile release dependency ${name} cannot use latest`);
+for(const [name,version] of Object.entries({
+  expo:'~57.0.9','expo-router':'~57.0.9','expo-constants':'~57.0.8','expo-linking':'~57.0.4','expo-splash-screen':'~57.0.5','expo-system-ui':'~57.0.2',react:'19.2.3','react-native':'0.86.2'
+})) must(mobilePkg.dependencies?.[name]===version,`Mobile ${name} must be pinned to ${version}`);
+must(mobilePkg.devDependencies.typescript==='6.0.3','Mobile TypeScript must be pinned to 6.0.3');
+must(mobilePkg.dependencies?.['react-native-purchases']==='10.5.0','Mobile RevenueCat SDK must be pinned to 10.5.0');
+
+for(const manifest of ['package.json','packages/api-client/package.json','packages/domain/package.json','packages/schemas/package.json','packages/ui/package.json']){
+  const pkg=json(manifest);
+  for(const [name,version] of Object.entries({...pkg.dependencies,...pkg.devDependencies})) must(version!=='latest',`${manifest}: ${name} cannot use latest`);
+}
+const rootPkg=json('package.json');
+must(rootPkg.packageManager==='pnpm@11.9.0','Root packageManager must match SDK 57 EAS pnpm 11.9.0');
+must(rootPkg.devDependencies.typescript==='6.0.3','Root TypeScript must be pinned to 6.0.3');
+const uiPkg=json('packages/ui/package.json');
+must(uiPkg.devDependencies.typescript==='6.0.3','UI TypeScript must be pinned to 6.0.3');
+
+must(exists('.easignore'),'Release must have .easignore');
+const easIgnore=read('.easignore');
+must(!/^\s*dist\s*$/m.test(easIgnore),'.easignore must not drop workspace dist output');
+for(const p of ['packages/api-client/dist/index.js','packages/domain/dist/index.js','packages/schemas/dist/index.js','packages/ui/dist/index.js']) must(exists(p),`Missing compiled workspace entry: ${p}`);
+
