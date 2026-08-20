@@ -25,6 +25,8 @@ if(fs.existsSync(dynamicPath)){
 const rootPackagePath=p('package.json');
 if(fs.existsSync(rootPackagePath)){
   const rootPkg=JSON.parse(fs.readFileSync(rootPackagePath,'utf8'));
+  rootPkg.packageManager='pnpm@11.9.0';
+  rootPkg.devDependencies={...(rootPkg.devDependencies??{}),typescript:'6.0.3'};
   if(rootPkg.devDependencies?.turbo==='latest') rootPkg.devDependencies.turbo='2.10.10';
   if(rootPkg.dependencies?.turbo==='latest') rootPkg.dependencies.turbo='2.10.10';
   fs.writeFileSync(rootPackagePath,JSON.stringify(rootPkg,null,2)+'\n');
@@ -61,6 +63,8 @@ if(fs.existsSync(dynamicPath)){
   if(!/buildNumber\s*:\s*['"]2['"]/.test(dynamic))throw new Error('Dynamic Expo iOS buildNumber drifted');
 }
 const rootPkg=JSON.parse(fs.readFileSync(rootPackagePath,'utf8'));
+if(rootPkg.packageManager!=='pnpm@11.9.0')throw new Error('pnpm contract drifted');
+if(rootPkg.devDependencies?.typescript!=='6.0.3')throw new Error('Root TypeScript contract drifted');
 if(rootPkg.devDependencies?.turbo==='latest'||rootPkg.dependencies?.turbo==='latest')throw new Error('Turborepo must be pinned');
 for(const rel of ['packages/api-client/package.json','packages/domain/package.json','packages/schemas/package.json','packages/ui/package.json']){
   const manifest=JSON.parse(fs.readFileSync(p(rel),'utf8'));
