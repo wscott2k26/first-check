@@ -9,10 +9,30 @@ on:
 
 permissions:
   actions: read
-  contents: read
+  contents: write
+
+concurrency:
+  group: first-check-v4-exact-aab-smoke
+  cancel-in-progress: true
 
 jobs:
+  record-start:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record exact AAB smoke start
+        run: |
+          printf '{"status":"started","run_id":%s,"started_at":"%s","source_aab_sha256":"%s"}\n' \
+            '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            'b12930a4a357aba1f55114e323c86726354209dce7c88219e3569926ed7209d2' > ci/v4-exact-aab-smoke-result.json
+          git config user.name 'First Check CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add ci/v4-exact-aab-smoke-result.json
+          git commit -m "ci: exact V4 AAB smoke start ${{ github.run_id }}" || true
+          git push origin HEAD:main
+
   exact-aab-smoke:
+    needs: record-start
     name: exact-aab-api-${{ matrix.api }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -102,3 +122,21 @@ jobs:
             /tmp/first-check-v4-exact-logcat-api-${{ matrix.api }}.txt
             /tmp/first-check-v4-exact-screen-api-${{ matrix.api }}.png
           retention-days: 7
+
+  record-result:
+    if: always()
+    needs: [record-start, exact-aab-smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record exact AAB smoke result
+        run: |
+          git pull --rebase origin main || true
+          printf '{"status":"%s","run_id":%s,"finished_at":"%s","source_aab_sha256":"%s","apis":[35,36],"cold_launches_per_api":5}\n' \
+            '${{ needs.exact-aab-smoke.result }}' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            'b12930a4a357aba1f55114e323c86726354209dce7c88219e3569926ed7209d2' > ci/v4-exact-aab-smoke-result.json
+          git config user.name 'First Check CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add ci/v4-exact-aab-smoke-result.json
+          git commit -m "ci: exact V4 AAB smoke result ${{ github.run_id }} ${{ needs.exact-aab-smoke.result }}" || true
+          git push origin HEAD:main
