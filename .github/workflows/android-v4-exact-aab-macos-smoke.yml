@@ -1,0 +1,141 @@
+name: First Check V4 Exact AAB macOS Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/android-v4-exact-aab-macos-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: first-check-v4-exact-aab-macos
+  cancel-in-progress: true
+
+jobs:
+  record-start:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record start
+        run: |
+          printf '{"status":"started","run_id":%s,"started_at":"%s","source_aab_sha256":"%s"}\n' \
+            '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            'b12930a4a357aba1f55114e323c86726354209dce7c88219e3569926ed7209d2' > ci/v4-macos-smoke-result.json
+          git config user.name 'First Check CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add ci/v4-macos-smoke-result.json
+          git commit -m "ci: V4 macOS runtime start ${{ github.run_id }}" || true
+          git push origin HEAD:main
+
+  runtime:
+    needs: record-start
+    name: api-${{ matrix.api }}
+    runs-on: macos-15
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [35, 36]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Download exact rejected V4 AAB payload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/v4aab
+          gh run download 32177242156 --repo "${{ github.repository }}" -n first-check-unsigned-store-aab -D /tmp/v4aab
+          test -s /tmp/v4aab/first-check-unsigned-release.aab
+          ACTUAL="$(shasum -a 256 /tmp/v4aab/first-check-unsigned-release.aab | awk '{print $1}')"
+          EXPECTED='b12930a4a357aba1f55114e323c86726354209dce7c88219e3569926ed7209d2'
+          echo "AAB_SHA256=$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Build installable universal APK from exact AAB
+        run: |
+          curl -fsSL -o /tmp/bundletool.jar https://github.com/google/bundletool/releases/download/1.18.1/bundletool-all-1.18.1.jar
+          keytool -genkeypair -v -keystore /tmp/debug.keystore -storepass android -alias androiddebugkey -keypass android -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -keysize 2048 -validity 10000
+          java -jar /tmp/bundletool.jar build-apks \
+            --bundle=/tmp/v4aab/first-check-unsigned-release.aab \
+            --output=/tmp/v4.apks \
+            --mode=universal \
+            --ks=/tmp/debug.keystore \
+            --ks-key-alias=androiddebugkey \
+            --ks-pass=pass:android \
+            --key-pass=pass:android \
+            --overwrite
+          mkdir -p /tmp/v4apks
+          unzip -q /tmp/v4.apks universal.apk -d /tmp/v4apks
+          test -s /tmp/v4apks/universal.apk
+
+      - name: Cold-launch exact AAB payload five times
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          script: |
+            set -e
+            LOG=/tmp/first-check-v4-api-${{ matrix.api }}.logcat.txt
+            : > "$LOG"
+            adb install -r /tmp/v4apks/universal.apk
+            adb shell pm clear com.stormandme.firstcheck >/dev/null || true
+            for i in 1 2 3 4 5; do
+              echo "=== COLD LAUNCH $i / API ${{ matrix.api }} ==="
+              adb logcat -c
+              adb shell am force-stop com.stormandme.firstcheck
+              adb shell monkey -p com.stormandme.firstcheck -c android.intent.category.LAUNCHER 1 >/dev/null
+              sleep 8
+              adb logcat -d -v threadtime >> "$LOG"
+              PID="$(adb shell pidof com.stormandme.firstcheck | tr -d '\r')"
+              echo "PID=$PID"
+              if [ -z "$PID" ]; then
+                echo "FAIL: First Check process died on launch $i"
+                exit 21
+              fi
+              if grep -qE 'FATAL EXCEPTION|Fatal signal|Process: com\.stormandme\.firstcheck|NoSuchMethodError' "$LOG"; then
+                echo "FAIL: fatal crash signature on launch $i"
+                exit 22
+              fi
+            done
+            adb exec-out screencap -p > /tmp/first-check-v4-api-${{ matrix.api }}.png
+            echo 'RUNTIME_SMOKE=PASS'
+
+      - name: Upload runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-check-v4-macos-evidence-api-${{ matrix.api }}
+          path: |
+            /tmp/first-check-v4-api-${{ matrix.api }}.logcat.txt
+            /tmp/first-check-v4-api-${{ matrix.api }}.png
+          retention-days: 7
+
+  record-result:
+    if: always()
+    needs: [record-start, runtime]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record final result
+        run: |
+          git pull --rebase origin main || true
+          printf '{"status":"%s","run_id":%s,"finished_at":"%s","source_aab_sha256":"%s","apis":[35,36],"cold_launches_per_api":5}\n' \
+            '${{ needs.runtime.result }}' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            'b12930a4a357aba1f55114e323c86726354209dce7c88219e3569926ed7209d2' > ci/v4-macos-smoke-result.json
+          git config user.name 'First Check CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add ci/v4-macos-smoke-result.json
+          git commit -m "ci: V4 macOS runtime result ${{ github.run_id }} ${{ needs.runtime.result }}" || true
+          git push origin HEAD:main
