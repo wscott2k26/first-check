@@ -81,7 +81,6 @@ jobs:
             scripts/pro-more-screen.test.mjs \
             scripts/pro-release-contract.test.mjs \
             scripts/brand-polish.test.mjs
-          node scripts/store-release-contract.mjs
       - name: Install and lock dependencies
         working-directory: build-src
         run: |
@@ -97,6 +96,9 @@ jobs:
           pnpm --filter @first-check/api-client build
           pnpm --filter @first-check/mobile typecheck
           pnpm --filter @first-check/mobile exec expo install --check
+      - name: Verify release contract after real package builds
+        working-directory: build-src
+        run: node scripts/store-release-contract.mjs
       - name: Generate Android API 36 project
         working-directory: build-src/apps/mobile
         run: pnpm exec expo prebuild --platform android --clean --no-install
