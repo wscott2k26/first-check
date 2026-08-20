@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   contract:
@@ -35,4 +35,15 @@ jobs:
           node ci/apply-storm-brand-v4.mjs build-src
           node ci/apply-first-check-pro.mjs build-src
       - name: Pro code 4 + clean-launch contract
+        id: code4
         run: node ci/assert-first-check-pro-code4.mjs build-src
+      - name: Record contract outcome
+        if: always()
+        run: |
+          git pull --rebase origin main || true
+          printf '{"status":"%s","run_id":%s,"finished_at":"%s"}\n' '${{ steps.code4.outcome }}' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ci/pro-code4-contract-result.json
+          git config user.name 'First Check CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add ci/pro-code4-contract-result.json
+          git commit -m "ci: Pro code 4 contract ${{ github.run_id }} ${{ steps.code4.outcome }}" || true
+          git push origin HEAD:main
