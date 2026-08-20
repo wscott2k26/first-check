@@ -8,6 +8,8 @@ on:
       - 'ci/apply-storm-brand-v4.mjs'
       - 'ci/storm-brand-v4.payload.part*'
       - 'ci/apply-first-check-pro.mjs'
+      - 'ci/apply-first-check-pro-code4.mjs'
+      - 'ci/assert-first-check-pro-code4.mjs'
       - 'ci/first-check-pro.payload.part*'
       - '.github/workflows/android-store-public.yml'
   workflow_dispatch:
@@ -65,6 +67,10 @@ jobs:
         run: node ci/apply-storm-brand-v4.mjs build-src
       - name: Apply First Check Pro V1.1
         run: node ci/apply-first-check-pro.mjs build-src
+      - name: Carry clean-launch recovery into Pro code 4
+        run: node ci/apply-first-check-pro-code4.mjs build-src
+      - name: Verify Pro code 4 + clean-launch contract
+        run: node ci/assert-first-check-pro-code4.mjs build-src
       - name: Stage CI applicator contract for tests
         run: |
           mkdir -p build-src/ci
@@ -107,12 +113,14 @@ jobs:
         run: |
           grep -q 'com.stormandme.firstcheck' apps/mobile/android/app/build.gradle
           grep -q 'targetSdkVersion rootProject.ext.targetSdkVersion' apps/mobile/android/app/build.gradle
-          grep -q 'versionCode 3' apps/mobile/android/app/build.gradle
+          grep -q 'versionCode 4' apps/mobile/android/app/build.gradle
           grep -q '"version": "1.1.0"' apps/mobile/app.json
           grep -q '"buildNumber": "2"' apps/mobile/app.json
           grep -q 'react-native-purchases' apps/mobile/package.json
           grep -q 'Storm And Me Studios' apps/mobile/src/brand/brand-intro.tsx
           grep -q '#07111F' apps/mobile/app.config.ts
+          grep -q '<Stack.Screen name="index" />' apps/mobile/app/_layout.tsx
+          test -s apps/mobile/app/index.tsx
           python - <<'PY'
           from pathlib import Path
           p=Path('apps/mobile/android/app/build.gradle')
@@ -128,20 +136,20 @@ jobs:
           ./gradlew :app:bundleRelease --no-daemon --stacktrace
           AAB=app/build/outputs/bundle/release/app-release.aab
           test -s "$AAB"
-          cp "$AAB" /tmp/first-check-pro-v1.1-unsigned-release.aab
-          sha256sum /tmp/first-check-pro-v1.1-unsigned-release.aab | tee /tmp/first-check-pro-v1.1-unsigned-release.sha256
+          cp "$AAB" /tmp/first-check-pro-v1.1-code4-unsigned-release.aab
+          sha256sum /tmp/first-check-pro-v1.1-code4-unsigned-release.aab | tee /tmp/first-check-pro-v1.1-code4-unsigned-release.sha256
       - name: Upload unsigned AAB
         uses: actions/upload-artifact@v4
         with:
-          name: first-check-pro-v1.1-unsigned-store-aab
+          name: first-check-pro-v1.1-code4-unsigned-store-aab
           path: |
-            /tmp/first-check-pro-v1.1-unsigned-release.aab
-            /tmp/first-check-pro-v1.1-unsigned-release.sha256
+            /tmp/first-check-pro-v1.1-code4-unsigned-release.aab
+            /tmp/first-check-pro-v1.1-code4-unsigned-release.sha256
           retention-days: 7
       - name: Upload generated lockfile
         uses: actions/upload-artifact@v4
         with:
-          name: first-check-pro-v1.1-pnpm-lockfile
+          name: first-check-pro-v1.1-code4-pnpm-lockfile
           path: build-src/pnpm-lock.yaml
           retention-days: 7
       - name: Record build result
@@ -149,8 +157,8 @@ jobs:
         run: |
           git pull --rebase origin main || true
           SHA=''
-          test ! -f /tmp/first-check-pro-v1.1-unsigned-release.sha256 || SHA="$(cut -d' ' -f1 /tmp/first-check-pro-v1.1-unsigned-release.sha256)"
-          printf '{"status":"%s","run_id":%s,"finished_at":"%s","unsigned_aab_sha256":"%s"}\n' '${{ job.status }}' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SHA" > ci/store-build-result.json
+          test ! -f /tmp/first-check-pro-v1.1-code4-unsigned-release.sha256 || SHA="$(cut -d' ' -f1 /tmp/first-check-pro-v1.1-code4-unsigned-release.sha256)"
+          printf '{"status":"%s","run_id":%s,"finished_at":"%s","release":"1.1.0","version_code":4,"ios_build":"2","unsigned_aab_sha256":"%s"}\n' '${{ job.status }}' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SHA" > ci/store-build-result.json
           git add ci/store-build-result.json
-          git commit -m "ci: Pro v1.1 store build result ${{ github.run_id }} ${{ job.status }}" || true
+          git commit -m "ci: Pro v1.1 code4 build result ${{ github.run_id }} ${{ job.status }}" || true
           git push origin HEAD:main
