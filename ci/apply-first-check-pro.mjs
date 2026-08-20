@@ -24,14 +24,21 @@ if(fs.existsSync(dynamicPath)){
   fs.writeFileSync(dynamicPath,source);
 }
 
-// Historical reconstructed workspace used a floating Turborepo dependency. Pin the exact
-// build tool so the generated lockfile is reproducible and release-contract compliant.
+// Pin floating build-tool dependencies left by the historical reconstructed source.
 const rootPackagePath=p('package.json');
 if(fs.existsSync(rootPackagePath)){
   const rootPkg=JSON.parse(fs.readFileSync(rootPackagePath,'utf8'));
   if(rootPkg.devDependencies?.turbo==='latest') rootPkg.devDependencies.turbo='2.10.10';
   if(rootPkg.dependencies?.turbo==='latest') rootPkg.dependencies.turbo='2.10.10';
   fs.writeFileSync(rootPackagePath,JSON.stringify(rootPkg,null,2)+'\n');
+}
+for(const rel of ['packages/api-client/package.json','packages/domain/package.json','packages/schemas/package.json','packages/ui/package.json']){
+  const file=p(rel);
+  if(!fs.existsSync(file))continue;
+  const manifest=JSON.parse(fs.readFileSync(file,'utf8'));
+  if(manifest.devDependencies?.typescript==='latest')manifest.devDependencies.typescript='6.0.3';
+  if(manifest.dependencies?.typescript==='latest')manifest.dependencies.typescript='6.0.3';
+  fs.writeFileSync(file,JSON.stringify(manifest,null,2)+'\n');
 }
 
 // The portable source prefers static app.json, but CI intentionally carries app.config.ts.
@@ -57,6 +64,10 @@ if(fs.existsSync(dynamicPath)){
 }
 const rootPkg=JSON.parse(fs.readFileSync(rootPackagePath,'utf8'));
 if(rootPkg.devDependencies?.turbo==='latest'||rootPkg.dependencies?.turbo==='latest')throw new Error('Turborepo must be pinned');
+for(const rel of ['packages/api-client/package.json','packages/domain/package.json','packages/schemas/package.json','packages/ui/package.json']){
+  const manifest=JSON.parse(fs.readFileSync(p(rel),'utf8'));
+  if(manifest.devDependencies?.typescript==='latest'||manifest.dependencies?.typescript==='latest')throw new Error(`${rel} TypeScript must be pinned`);
+}
 const pkg=JSON.parse(fs.readFileSync(p('apps/mobile/package.json'),'utf8'));
 if(pkg.dependencies?.['react-native-purchases']!=='10.5.0')throw new Error('RevenueCat SDK pin missing');
 const entitlement=fs.readFileSync(p('apps/mobile/src/billing/entitlement-policy.ts'),'utf8');
