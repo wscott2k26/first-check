@@ -8,8 +8,6 @@ const encoded=[1,2,3,4,5].map(i=>fs.readFileSync(path.join(here,`first-check-pro
 const payload=JSON.parse(zlib.gunzipSync(Buffer.from(encoded,'base64')).toString('utf8'));
 for(const [rel,content] of Object.entries(payload)){const file=p(rel);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,content);}
 
-// CI reconstruction retains the historical dynamic Expo config. Expo gives app.config.ts
-// priority over app.json, so keep the next-store identity/version contract aligned in both.
 const dynamicPath=p('apps/mobile/app.config.ts');
 if(fs.existsSync(dynamicPath)){
   let source=fs.readFileSync(dynamicPath,'utf8');
@@ -24,7 +22,6 @@ if(fs.existsSync(dynamicPath)){
   fs.writeFileSync(dynamicPath,source);
 }
 
-// Pin floating build/test dependencies left by the historical reconstructed source.
 const rootPackagePath=p('package.json');
 if(fs.existsSync(rootPackagePath)){
   const rootPkg=JSON.parse(fs.readFileSync(rootPackagePath,'utf8'));
@@ -39,12 +36,11 @@ for(const rel of ['packages/api-client/package.json','packages/domain/package.js
   for(const section of ['dependencies','devDependencies']){
     if(manifest[section]?.typescript==='latest')manifest[section].typescript='6.0.3';
     if(manifest[section]?.vitest==='latest')manifest[section].vitest='4.1.10';
+    if(manifest[section]?.zod==='latest')manifest[section].zod='4.1.11';
   }
   fs.writeFileSync(file,JSON.stringify(manifest,null,2)+'\n');
 }
 
-// The portable source prefers static app.json, but CI intentionally carries app.config.ts.
-// Make the release contract validate that dynamic config instead of rejecting its existence.
 const contractPath=p('scripts/store-release-contract.mjs');
 if(fs.existsSync(contractPath)){
   let source=fs.readFileSync(contractPath,'utf8');
