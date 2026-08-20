@@ -1,1 +1,1 @@
-{"status":"failure","run_id":32335992035,"finished_at":"2026-08-20T05:44:47Z","source_aab_sha256":"b12930a4a357aba1f55114e323c86726354209dce7c88219e3569926ed7209d2","apis":[35,36],"cold_launches_per_api":5,"runner":"macos-15-intel","arch":"x86_64"}
+{"status":"started","run_id":32377362265,"started_at":"2026-08-20T13:58:46Z","source_aab_sha256":"b12930a4a357aba1f55114e323c86726354209dce7c88219e3569926ed7209d2"}
