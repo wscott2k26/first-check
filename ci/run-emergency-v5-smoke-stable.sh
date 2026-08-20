@@ -17,60 +17,67 @@ dump_ui() {
   adb shell cat /sdcard/first-check-window.xml > "$out" 2>/dev/null || true
 }
 
-dismiss_system_anr_only() {
-  local n xml coords x y
-  for n in 1 2 3; do
+handle_android_dialogs() {
+  local n xml result action x y title
+  for n in 1 2 3 4 5 6; do
     xml="/tmp/android-system-dialog-${API}-${n}.xml"
     dump_ui "$xml"
-    if grep -qE 'First Check (isn.t responding|keeps stopping)|com\.stormandme\.firstcheck' "$xml"; then
-      echo 'FAIL: First Check-specific Android crash/ANR dialog is visible.'
-      cat "$xml" || true
-      return 31
-    fi
-    if ! grep -q 'Process system isn.t responding' "$xml"; then
-      return 0
-    fi
-    echo 'Emulator system-process ANR detected; choosing Wait (not closing First Check).'
-    coords="$(python3 - "$xml" <<'PY'
-import re,sys
-s=open(sys.argv[1],encoding='utf-8',errors='ignore').read()
-m=re.search(r'text="Wait"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',s)
-if not m:
-    m=re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^>]*text="Wait"',s)
-if m:
-    a,b,c,d=map(int,m.groups()); print((a+c)//2,(b+d)//2)
-PY
-)"
-    if [[ -n "$coords" ]]; then
-      read -r x y <<<"$coords"
-      adb shell input tap "$x" "$y" || true
-    else
-      adb shell input keyevent 61 || true
-      adb shell input keyevent 66 || true
-    fi
-    sleep 12
+    result="$(python3 ci/android_dialog_action.py "$xml")"
+    IFS=$'\t' read -r action x y title <<< "$result"
+
+    case "$action" in
+      none)
+        return 0
+        ;;
+      first-check)
+        echo "FAIL: First Check-specific Android crash/ANR dialog is visible: $title"
+        cat "$xml" || true
+        return 31
+        ;;
+      wait|close|ok)
+        echo "Unrelated Android/emulator dialog detected: $title; action=$action"
+        adb shell input tap "$x" "$y" || true
+        sleep 8
+        ;;
+      blocked)
+        echo "INVALID ENVIRONMENT: unrelated Android dialog cannot be safely dismissed: $title"
+        cat "$xml" || true
+        return 32
+        ;;
+      *)
+        echo "INVALID ENVIRONMENT: unknown dialog classifier result: $result"
+        cat "$xml" || true
+        return 33
+        ;;
+    esac
   done
+
   dump_ui "/tmp/android-system-dialog-${API}-final.xml"
-  if grep -q 'Process system isn.t responding' "/tmp/android-system-dialog-${API}-final.xml"; then
-    echo 'INVALID ENVIRONMENT: Android system process remains ANR after Wait.'
+  result="$(python3 ci/android_dialog_action.py "/tmp/android-system-dialog-${API}-final.xml")"
+  IFS=$'\t' read -r action x y title <<< "$result"
+  if [[ "$action" != "none" ]]; then
+    echo "INVALID ENVIRONMENT: Android dialog remains after repeated safe handling: $title"
     return 32
   fi
 }
 
+# Regression pin for the exact false-positive patterns seen in the hosted emulators.
+python3 ci/test_android_dialog_action.py
+
 echo "=== API $API emulator settle ==="
-# The Intel hosted emulator can report boot-complete while framework services are still catching up.
+# Intel hosted emulators can report boot-complete while framework services are still catching up.
 sleep 35
 adb shell input keyevent KEYCODE_HOME || true
 sleep 5
-dismiss_system_anr_only
+handle_android_dialogs
 
 echo "=== Install exact 1.0.1 code-3 APK ==="
 adb install -r "$APK"
 adb shell pm clear "$PKG" >/dev/null || true
-# Installation is intentionally followed by a settle window; the prior run showed Android's own
-# system process ANR immediately after a very slow streamed install while First Check stayed alive.
+# Installation is intentionally followed by a settle window because hosted Android system services
+# can throw their own ANR/crash dialogs while First Check remains healthy.
 sleep 45
-dismiss_system_anr_only
+handle_android_dialogs
 
 for i in 1 2 3 4 5; do
   echo "=== FIRST CHECK STABLE COLD LAUNCH $i / API $API ==="
@@ -79,7 +86,7 @@ for i in 1 2 3 4 5; do
   adb shell am start -n "$ACTIVITY" | tee "/tmp/first-check-v101-start-${API}-${i}.txt"
   sleep 20
 
-  dismiss_system_anr_only
+  handle_android_dialogs
 
   PID="$(adb shell pidof "$PKG" | tr -d '\r')"
   echo "First Check PID=$PID"
