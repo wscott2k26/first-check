@@ -1,1 +1,1 @@
-{"status":"failure","run_id":32335195267,"finished_at":"2026-08-20T05:31:52Z","source_aab_sha256":"b12930a4a357aba1f55114e323c86726354209dce7c88219e3569926ed7209d2","apis":[35,36],"cold_launches_per_api":5,"arch":"arm64-v8a"}
+{"status":"started","run_id":32335992035,"started_at":"2026-08-20T05:32:41Z","source_aab_sha256":"b12930a4a357aba1f55114e323c86726354209dce7c88219e3569926ed7209d2"}
