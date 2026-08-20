@@ -43,7 +43,7 @@ export default function IndexScreen() {
   write(rel, source);
 }
 
-// Android code 3 is now occupied by the approved crash-recovery submission.
+// Android code 3 is now occupied by the crash-recovery submission.
 // Pro remains 1.1.0 but advances to code 4. iOS build stays 2.
 {
   const rel = 'apps/mobile/app.config.ts';
@@ -69,6 +69,23 @@ export default function IndexScreen() {
   parsed.expo.ios ??= {};
   parsed.expo.ios.buildNumber = '2';
   write(rel, JSON.stringify(parsed, null, 2) + '\n');
+}
+
+// Expo's compatibility checker is a release gate. Pin the exact SDK 57 patch line it currently requires.
+{
+  const rel = 'apps/mobile/package.json';
+  const pkg = JSON.parse(read(rel));
+  pkg.dependencies ??= {};
+  const required = {
+    expo: '~57.0.15',
+    'expo-router': '~57.0.15',
+    'expo-image-picker': '~57.0.12',
+    'expo-file-system': '~57.0.5',
+    'expo-constants': '~57.0.13',
+    'expo-linking': '~57.0.7',
+  };
+  for (const [name, version] of Object.entries(required)) pkg.dependencies[name] = version;
+  write(rel, JSON.stringify(pkg, null, 2) + '\n');
 }
 
 // Keep release-contract tests synchronized with the new immutable Play version code.
@@ -104,4 +121,4 @@ for (const rel of [
   }
 }
 
-console.log('First Check Pro preparation applied: 1.1.0 / Android code 4 / iOS build 2 + clean-launch recovery.');
+console.log('First Check Pro preparation applied: 1.1.0 / Android code 4 / iOS build 2 + clean-launch recovery + Expo 57 patch alignment.');
