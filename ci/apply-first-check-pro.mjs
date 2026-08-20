@@ -43,6 +43,11 @@ for(const rel of ['packages/api-client/package.json','packages/domain/package.js
   fs.writeFileSync(file,JSON.stringify(manifest,null,2)+'\n');
 }
 
+const easIgnorePath=p('.easignore');
+if(!fs.existsSync(easIgnorePath)){
+  fs.writeFileSync(easIgnorePath,`# First Check EAS archive rules — intentionally do NOT ignore packages/**/dist.\n.worktrees/\nnode_modules/\n.next/\n.expo/\n.expo-preflight/\ncoverage/\n.env\n.env.local\n.supabase/\nplaywright-report/\ntest-results/\nFIRST-CHECK-BUILD-LOG.txt\n.DS_Store\n*.zip\n`);
+}
+
 const contractPath=p('scripts/store-release-contract.mjs');
 if(fs.existsSync(contractPath)){
   let source=fs.readFileSync(contractPath,'utf8');
@@ -72,6 +77,7 @@ for(const rel of ['packages/api-client/package.json','packages/domain/package.js
     if(version==='latest')throw new Error(`${rel}: ${name} must be pinned`);
   }
 }
+if(!fs.existsSync(easIgnorePath))throw new Error('.easignore must exist');
 const pkg=JSON.parse(fs.readFileSync(p('apps/mobile/package.json'),'utf8'));
 if(pkg.dependencies?.['react-native-purchases']!=='10.5.0')throw new Error('RevenueCat SDK pin missing');
 const entitlement=fs.readFileSync(p('apps/mobile/src/billing/entitlement-policy.ts'),'utf8');
