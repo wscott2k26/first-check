@@ -34,7 +34,7 @@ jobs:
   runtime:
     needs: record-start
     name: api-${{ matrix.api }}
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -81,7 +81,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
-          arch: arm64-v8a
+          arch: x86_64
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
@@ -131,7 +131,7 @@ jobs:
       - name: Record final result
         run: |
           git pull --rebase origin main || true
-          printf '{"status":"%s","run_id":%s,"finished_at":"%s","source_aab_sha256":"%s","apis":[35,36],"cold_launches_per_api":5,"arch":"arm64-v8a"}\n' \
+          printf '{"status":"%s","run_id":%s,"finished_at":"%s","source_aab_sha256":"%s","apis":[35,36],"cold_launches_per_api":5,"runner":"macos-15-intel","arch":"x86_64"}\n' \
             '${{ needs.runtime.result }}' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             'b12930a4a357aba1f55114e323c86726354209dce7c88219e3569926ed7209d2' > ci/v4-macos-smoke-result.json
           git config user.name 'First Check CI'
