@@ -24,7 +24,7 @@ if(fs.existsSync(dynamicPath)){
   fs.writeFileSync(dynamicPath,source);
 }
 
-// Pin floating build-tool dependencies left by the historical reconstructed source.
+// Pin floating build/test dependencies left by the historical reconstructed source.
 const rootPackagePath=p('package.json');
 if(fs.existsSync(rootPackagePath)){
   const rootPkg=JSON.parse(fs.readFileSync(rootPackagePath,'utf8'));
@@ -36,8 +36,10 @@ for(const rel of ['packages/api-client/package.json','packages/domain/package.js
   const file=p(rel);
   if(!fs.existsSync(file))continue;
   const manifest=JSON.parse(fs.readFileSync(file,'utf8'));
-  if(manifest.devDependencies?.typescript==='latest')manifest.devDependencies.typescript='6.0.3';
-  if(manifest.dependencies?.typescript==='latest')manifest.dependencies.typescript='6.0.3';
+  for(const section of ['dependencies','devDependencies']){
+    if(manifest[section]?.typescript==='latest')manifest[section].typescript='6.0.3';
+    if(manifest[section]?.vitest==='latest')manifest[section].vitest='4.1.10';
+  }
   fs.writeFileSync(file,JSON.stringify(manifest,null,2)+'\n');
 }
 
@@ -66,7 +68,9 @@ const rootPkg=JSON.parse(fs.readFileSync(rootPackagePath,'utf8'));
 if(rootPkg.devDependencies?.turbo==='latest'||rootPkg.dependencies?.turbo==='latest')throw new Error('Turborepo must be pinned');
 for(const rel of ['packages/api-client/package.json','packages/domain/package.json','packages/schemas/package.json','packages/ui/package.json']){
   const manifest=JSON.parse(fs.readFileSync(p(rel),'utf8'));
-  if(manifest.devDependencies?.typescript==='latest'||manifest.dependencies?.typescript==='latest')throw new Error(`${rel} TypeScript must be pinned`);
+  for(const [name,version] of Object.entries({...manifest.dependencies,...manifest.devDependencies})){
+    if(version==='latest')throw new Error(`${rel}: ${name} must be pinned`);
+  }
 }
 const pkg=JSON.parse(fs.readFileSync(p('apps/mobile/package.json'),'utf8'));
 if(pkg.dependencies?.['react-native-purchases']!=='10.5.0')throw new Error('RevenueCat SDK pin missing');
