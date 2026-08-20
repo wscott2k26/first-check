@@ -7,6 +7,8 @@ on:
       - 'ci/apply-store-v3-hardening.mjs'
       - 'ci/apply-storm-brand-v4.mjs'
       - 'ci/storm-brand-v4.payload.part*'
+      - 'ci/apply-first-check-pro.mjs'
+      - 'ci/first-check-pro.payload.part*'
       - '.github/workflows/android-store-public.yml'
   workflow_dispatch:
 
@@ -61,6 +63,21 @@ jobs:
         run: node ci/apply-store-v3-hardening.mjs build-src
       - name: Apply Storm And Me V4 brand polish
         run: node ci/apply-storm-brand-v4.mjs build-src
+      - name: Apply First Check Pro V1.1
+        run: node ci/apply-first-check-pro.mjs build-src
+      - name: Run Pro and brand regression tests
+        working-directory: build-src
+        run: |
+          node --experimental-strip-types --test \
+            scripts/billing-policy.test.mjs \
+            scripts/billing-client-contract.test.mjs \
+            scripts/billing-provider-contract.test.mjs \
+            scripts/pro-paywall-contract.test.mjs \
+            scripts/pro-feature-gates.test.mjs \
+            scripts/pro-more-screen.test.mjs \
+            scripts/pro-release-contract.test.mjs \
+            scripts/brand-polish.test.mjs
+          node scripts/store-release-contract.mjs
       - name: Install and lock dependencies
         working-directory: build-src
         run: |
@@ -79,12 +96,15 @@ jobs:
       - name: Generate Android API 36 project
         working-directory: build-src/apps/mobile
         run: pnpm exec expo prebuild --platform android --clean --no-install
-      - name: Verify package, V4 version and strip debug signing from release
+      - name: Verify package, Pro version and strip debug signing from release
         working-directory: build-src
         run: |
           grep -q 'com.stormandme.firstcheck' apps/mobile/android/app/build.gradle
           grep -q 'targetSdkVersion rootProject.ext.targetSdkVersion' apps/mobile/android/app/build.gradle
-          grep -q 'versionCode 2' apps/mobile/android/app/build.gradle
+          grep -q 'versionCode 3' apps/mobile/android/app/build.gradle
+          grep -q '"version": "1.1.0"' apps/mobile/app.json
+          grep -q '"buildNumber": "2"' apps/mobile/app.json
+          grep -q 'react-native-purchases' apps/mobile/package.json
           grep -q 'Storm And Me Studios' apps/mobile/src/brand/brand-intro.tsx
           grep -q '#07111F' apps/mobile/app.config.ts
           python - <<'PY'
@@ -102,20 +122,20 @@ jobs:
           ./gradlew :app:bundleRelease --no-daemon --stacktrace
           AAB=app/build/outputs/bundle/release/app-release.aab
           test -s "$AAB"
-          cp "$AAB" /tmp/first-check-unsigned-release.aab
-          sha256sum /tmp/first-check-unsigned-release.aab | tee /tmp/first-check-unsigned-release.sha256
+          cp "$AAB" /tmp/first-check-pro-v1.1-unsigned-release.aab
+          sha256sum /tmp/first-check-pro-v1.1-unsigned-release.aab | tee /tmp/first-check-pro-v1.1-unsigned-release.sha256
       - name: Upload unsigned AAB
         uses: actions/upload-artifact@v4
         with:
-          name: first-check-unsigned-store-aab
+          name: first-check-pro-v1.1-unsigned-store-aab
           path: |
-            /tmp/first-check-unsigned-release.aab
-            /tmp/first-check-unsigned-release.sha256
+            /tmp/first-check-pro-v1.1-unsigned-release.aab
+            /tmp/first-check-pro-v1.1-unsigned-release.sha256
           retention-days: 7
       - name: Upload generated lockfile
         uses: actions/upload-artifact@v4
         with:
-          name: first-check-pnpm-lockfile
+          name: first-check-pro-v1.1-pnpm-lockfile
           path: build-src/pnpm-lock.yaml
           retention-days: 7
       - name: Record build result
@@ -123,8 +143,8 @@ jobs:
         run: |
           git pull --rebase origin main || true
           SHA=''
-          test ! -f /tmp/first-check-unsigned-release.sha256 || SHA="$(cut -d' ' -f1 /tmp/first-check-unsigned-release.sha256)"
+          test ! -f /tmp/first-check-pro-v1.1-unsigned-release.sha256 || SHA="$(cut -d' ' -f1 /tmp/first-check-pro-v1.1-unsigned-release.sha256)"
           printf '{"status":"%s","run_id":%s,"finished_at":"%s","unsigned_aab_sha256":"%s"}\n' '${{ job.status }}' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SHA" > ci/store-build-result.json
           git add ci/store-build-result.json
-          git commit -m "ci: store build result ${{ github.run_id }} ${{ job.status }}" || true
+          git commit -m "ci: Pro v1.1 store build result ${{ github.run_id }} ${{ job.status }}" || true
           git push origin HEAD:main
