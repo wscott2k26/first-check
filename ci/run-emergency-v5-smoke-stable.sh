@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Stable runtime gate for the exact emergency 1.0.1 / code-3 AAB.
 API="${1:?API level required}"
 APK="${2:-/tmp/emergency-v5/universal.apk}"
 PKG='com.stormandme.firstcheck'
@@ -119,7 +120,6 @@ for i in 1 2 3 4 5; do
     echo 'FAIL: First Check is alive but not foreground after the stabilized launch.'
     exit 26
   fi
-
 done
 
 adb exec-out screencap -p > "$SCREEN"
