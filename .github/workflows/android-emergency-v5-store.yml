@@ -11,14 +11,28 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: first-check-emergency-v5-store
   cancel-in-progress: true
 
 jobs:
+  record-start:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record emergency recovery start
+        run: |
+          printf '{"status":"started","run_id":%s,"started_at":"%s","release":"1.0.1","version_code":3}\n' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ci/emergency-v5-run.json
+          git config user.name 'First Check CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add ci/emergency-v5-run.json
+          git commit -m "ci: emergency V5 start ${{ github.run_id }}" || true
+          git push origin HEAD:main
+
   build:
+    needs: record-start
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -203,13 +217,22 @@ jobs:
 
   release-gate:
     if: always()
-    needs: [build, runtime]
+    needs: [record-start, build, runtime]
     runs-on: ubuntu-latest
     steps:
-      - name: Final emergency release gate
+      - uses: actions/checkout@v4
+      - name: Final emergency release gate and receipt
         run: |
           echo "build=${{ needs.build.result }}"
           echo "runtime=${{ needs.runtime.result }}"
-          test '${{ needs.build.result }}' = 'success'
-          test '${{ needs.runtime.result }}' = 'success'
+          STATUS='failure'
+          if test '${{ needs.build.result }}' = 'success' && test '${{ needs.runtime.result }}' = 'success'; then STATUS='success'; fi
+          git pull --rebase origin main || true
+          printf '{"status":"%s","run_id":%s,"finished_at":"%s","release":"1.0.1","version_code":3,"build":"%s","runtime":"%s"}\n' "$STATUS" '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '${{ needs.build.result }}' '${{ needs.runtime.result }}' > ci/emergency-v5-run.json
+          git config user.name 'First Check CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add ci/emergency-v5-run.json
+          git commit -m "ci: emergency V5 result ${{ github.run_id }} $STATUS" || true
+          git push origin HEAD:main
+          test "$STATUS" = 'success'
           echo 'PASS: First Check 1.0.1 code 3 cleared build + API35/API36 cold-launch gates.'
