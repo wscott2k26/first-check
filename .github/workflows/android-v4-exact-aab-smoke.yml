@@ -68,7 +68,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            set -o pipefail
+            set -e
             adb install -r /tmp/v4apks/universal.apk
             adb shell pm clear com.stormandme.firstcheck || true
             adb logcat -c
