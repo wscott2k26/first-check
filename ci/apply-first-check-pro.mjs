@@ -24,6 +24,16 @@ if(fs.existsSync(dynamicPath)){
   fs.writeFileSync(dynamicPath,source);
 }
 
+// Historical reconstructed workspace used a floating Turborepo dependency. Pin the exact
+// build tool so the generated lockfile is reproducible and release-contract compliant.
+const rootPackagePath=p('package.json');
+if(fs.existsSync(rootPackagePath)){
+  const rootPkg=JSON.parse(fs.readFileSync(rootPackagePath,'utf8'));
+  if(rootPkg.devDependencies?.turbo==='latest') rootPkg.devDependencies.turbo='2.10.10';
+  if(rootPkg.dependencies?.turbo==='latest') rootPkg.dependencies.turbo='2.10.10';
+  fs.writeFileSync(rootPackagePath,JSON.stringify(rootPkg,null,2)+'\n');
+}
+
 // The portable source prefers static app.json, but CI intentionally carries app.config.ts.
 // Make the release contract validate that dynamic config instead of rejecting its existence.
 const contractPath=p('scripts/store-release-contract.mjs');
@@ -45,6 +55,8 @@ if(fs.existsSync(dynamicPath)){
   if(!/versionCode\s*:\s*3/.test(dynamic))throw new Error('Dynamic Expo Android versionCode drifted');
   if(!/buildNumber\s*:\s*['"]2['"]/.test(dynamic))throw new Error('Dynamic Expo iOS buildNumber drifted');
 }
+const rootPkg=JSON.parse(fs.readFileSync(rootPackagePath,'utf8'));
+if(rootPkg.devDependencies?.turbo==='latest'||rootPkg.dependencies?.turbo==='latest')throw new Error('Turborepo must be pinned');
 const pkg=JSON.parse(fs.readFileSync(p('apps/mobile/package.json'),'utf8'));
 if(pkg.dependencies?.['react-native-purchases']!=='10.5.0')throw new Error('RevenueCat SDK pin missing');
 const entitlement=fs.readFileSync(p('apps/mobile/src/billing/entitlement-policy.ts'),'utf8');
