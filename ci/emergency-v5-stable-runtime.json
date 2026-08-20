@@ -1,1 +1,1 @@
-{"status":"failure","run_id":32386416175,"source_run":32379877049,"release":"1.0.1","version_code":3,"runtime":"failure","apis":[35,36],"cold_launches_per_api":5,"unsigned_aab_sha256":"e9c944c4e4edeb8a8862b90dcc4257abefc69de69f9f9db5b0e578aefc9f6a38"}
+{"status":"started","run_id":32387937771,"source_run":32379877049,"release":"1.0.1","version_code":3,"unsigned_aab_sha256":"e9c944c4e4edeb8a8862b90dcc4257abefc69de69f9f9db5b0e578aefc9f6a38"}
