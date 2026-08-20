@@ -1,1 +1,1 @@
-{"status":"started","run_id":32379618050,"started_at":"2026-08-20T14:21:18Z","release":"1.0.1","version_code":3}
+{"status":"failure","run_id":32379618050,"finished_at":"2026-08-20T14:21:39Z","release":"1.0.1","version_code":3,"build":"failure","runtime":"skipped"}
