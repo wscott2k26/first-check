@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   runtime-smoke:
@@ -17,6 +17,15 @@ jobs:
     steps:
       - name: Checkout CI carrier
         uses: actions/checkout@v4
+
+      - name: Record runtime smoke start
+        run: |
+          printf '{"status":"started","run_id":%s,"started_at":"%s"}\n' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ci/v4-runtime-smoke-result.json
+          git config user.name 'First Check CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add ci/v4-runtime-smoke-result.json
+          git commit -m "ci: V4 runtime smoke start ${{ github.run_id }}" || true
+          git push origin HEAD:main
 
       - uses: actions/setup-node@v4
         with:
@@ -110,3 +119,12 @@ jobs:
             /tmp/first-check-v4-logcat.txt
             /tmp/first-check-v4-screen.png
           retention-days: 7
+
+      - name: Record runtime smoke result
+        if: always()
+        run: |
+          git pull --rebase origin main || true
+          printf '{"status":"%s","run_id":%s,"finished_at":"%s"}\n' '${{ job.status }}' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ci/v4-runtime-smoke-result.json
+          git add ci/v4-runtime-smoke-result.json
+          git commit -m "ci: V4 runtime smoke result ${{ github.run_id }} ${{ job.status }}" || true
+          git push origin HEAD:main
