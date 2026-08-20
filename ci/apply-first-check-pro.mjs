@@ -48,6 +48,14 @@ if(!fs.existsSync(easIgnorePath)){
   fs.writeFileSync(easIgnorePath,`# First Check EAS archive rules — intentionally do NOT ignore packages/**/dist.\n.worktrees/\nnode_modules/\n.next/\n.expo/\n.expo-preflight/\ncoverage/\n.env\n.env.local\n.supabase/\nplaywright-report/\ntest-results/\nFIRST-CHECK-BUILD-LOG.txt\n.DS_Store\n*.zip\n`);
 }
 
+const storeDocs={
+'docs/store/app-store-listing.md':`# First Check — App Store Listing Source\n\n## Name\nFirst Check\n\n## Subtitle\nEvidence-first IT operations\n\n## Promotional text\nTurn daily infrastructure checks into a verified operational record — with AI-assisted extraction that never overrides human judgment.\n\n## Description\nFirst Check helps infrastructure teams document the checks that happen every morning but rarely live in one trustworthy place.\n\nCapture screenshots, photos, PDFs, CSV/text files, or pasted command output. AI can extract structured observations from the evidence, but it cannot mark an environment healthy, warning, or critical. A person reviews the evidence and records the final verification.\n\nFirst Check includes:\n- Repeatable daily checklists by environment.\n- Private evidence capture with observation timestamps and integrity metadata.\n- A “Needs Your Eyes” queue for low-confidence, conflicting, warning, or critical findings.\n- Human verification with an auditable source and timestamp trail.\n- Verified history and simple current-versus-previous trends.\n- Closed-run operational reports with evidence provenance.\n- Evidence-grounded Ask AI answers that cite human-verified facts.\n\nFirst Check complements your monitoring, backup, security, and infrastructure platforms instead of pretending to replace them.\n\n## Keywords\nIT operations,sysadmin,infrastructure,audit,checklist,backup,monitoring,evidence\n\n## Category\nPrimary: Business\n\n## Support URL\nhttps://first-check-web-preview.vercel.app/support\n\n## Privacy Policy URL\nhttps://first-check-web-preview.vercel.app/privacy\n`,
+'docs/store/google-play-listing.md':`# First Check — Google Play Listing Source\n\n## App name\nFirst Check\n\n## Short description\nEvidence-first daily infrastructure checks for IT teams.\n\n## Full description\nFirst Check helps infrastructure teams turn scattered morning checks into one auditable operational record.\n\nCapture screenshots, PDFs, CSV/text files, photos, or pasted command output. First Check can extract structured observations with AI, but AI never marks a check healthy, warning, or critical on its own. A person reviews the evidence and records the final verification.\n\nUse First Check to:\n- Run repeatable daily checklists by environment.\n- Capture private evidence and preserve source timestamps.\n- Review low-confidence or conflicting observations in “Needs Your Eyes.”\n- Track verified operational history and simple trends.\n- Generate closed-run daily reports with evidence and verifier provenance.\n- Ask evidence-grounded questions about facts your team already verified.\n\nFirst Check is designed to complement — not replace — monitoring, backup, security, and infrastructure-management platforms.\n\n## Category\nBusiness\n\n## Suggested tags\nIT operations; system administration; infrastructure; audit; productivity\n\n## Support URL\nhttps://first-check-web-preview.vercel.app/support\n\n## Privacy policy URL\nhttps://first-check-web-preview.vercel.app/privacy\n`
+};
+for(const [rel,content] of Object.entries(storeDocs)){
+  const file=p(rel);fs.mkdirSync(path.dirname(file),{recursive:true});if(!fs.existsSync(file))fs.writeFileSync(file,content);
+}
+
 const contractPath=p('scripts/store-release-contract.mjs');
 if(fs.existsSync(contractPath)){
   let source=fs.readFileSync(contractPath,'utf8');
@@ -78,6 +86,7 @@ for(const rel of ['packages/api-client/package.json','packages/domain/package.js
   }
 }
 if(!fs.existsSync(easIgnorePath))throw new Error('.easignore must exist');
+for(const rel of Object.keys(storeDocs))if(!fs.existsSync(p(rel)))throw new Error(`${rel} must exist`);
 const pkg=JSON.parse(fs.readFileSync(p('apps/mobile/package.json'),'utf8'));
 if(pkg.dependencies?.['react-native-purchases']!=='10.5.0')throw new Error('RevenueCat SDK pin missing');
 const entitlement=fs.readFileSync(p('apps/mobile/src/billing/entitlement-policy.ts'),'utf8');
