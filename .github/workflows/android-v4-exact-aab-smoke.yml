@@ -1,0 +1,104 @@
+name: First Check V4 Exact AAB Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/android-v4-exact-aab-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  exact-aab-smoke:
+    name: exact-aab-api-${{ matrix.api }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [35, 36]
+    steps:
+      - name: Checkout carrier
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Download exact V4 unsigned AAB artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/v4aab
+          gh run download 32177242156 --repo "${{ github.repository }}" -n first-check-unsigned-store-aab -D /tmp/v4aab
+          test -s /tmp/v4aab/first-check-unsigned-release.aab
+          sha256sum /tmp/v4aab/first-check-unsigned-release.aab
+          EXPECTED='b12930a4a357aba1f55114e323c86726354209dce7c88219e3569926ed7209d2'
+          ACTUAL="$(sha256sum /tmp/v4aab/first-check-unsigned-release.aab | cut -d' ' -f1)"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Build universal APK from exact AAB
+        run: |
+          curl -fsSL -o /tmp/bundletool.jar https://github.com/google/bundletool/releases/download/1.18.1/bundletool-all-1.18.1.jar
+          keytool -genkeypair -v -keystore /tmp/debug.keystore -storepass android -alias androiddebugkey -keypass android -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -keysize 2048 -validity 10000
+          java -jar /tmp/bundletool.jar build-apks \
+            --bundle=/tmp/v4aab/first-check-unsigned-release.aab \
+            --output=/tmp/v4.apks \
+            --mode=universal \
+            --ks=/tmp/debug.keystore \
+            --ks-key-alias=androiddebugkey \
+            --ks-pass=pass:android \
+            --key-pass=pass:android \
+            --overwrite
+          mkdir -p /tmp/v4apks
+          unzip -q /tmp/v4.apks universal.apk -d /tmp/v4apks
+          test -s /tmp/v4apks/universal.apk
+          sha256sum /tmp/v4apks/universal.apk
+
+      - name: Cold-launch exact AAB payload five times
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -o pipefail
+            adb install -r /tmp/v4apks/universal.apk
+            adb shell pm clear com.stormandme.firstcheck || true
+            adb logcat -c
+            : > /tmp/first-check-v4-exact-logcat-api-${{ matrix.api }}.txt
+            for i in 1 2 3 4 5; do
+              echo "=== COLD LAUNCH $i / API ${{ matrix.api }} ==="
+              adb shell am force-stop com.stormandme.firstcheck
+              adb shell monkey -p com.stormandme.firstcheck -c android.intent.category.LAUNCHER 1
+              sleep 6
+              PID="$(adb shell pidof com.stormandme.firstcheck | tr -d '\r')"
+              adb logcat -d -v threadtime >> /tmp/first-check-v4-exact-logcat-api-${{ matrix.api }}.txt
+              if [ -z "$PID" ]; then
+                echo "FAIL: process died on cold launch $i"
+                exit 1
+              fi
+              if grep -qE 'FATAL EXCEPTION|Fatal signal|Process: com\.stormandme\.firstcheck' /tmp/first-check-v4-exact-logcat-api-${{ matrix.api }}.txt; then
+                echo "FAIL: fatal crash signature found on launch $i"
+                exit 1
+              fi
+              adb logcat -c
+            done
+            adb exec-out screencap -p > /tmp/first-check-v4-exact-screen-api-${{ matrix.api }}.png
+            echo 'PASS: exact rejected V4 AAB payload survived 5 cold launches.'
+
+      - name: Upload exact-AAB runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-check-v4-exact-aab-evidence-api-${{ matrix.api }}
+          path: |
+            /tmp/first-check-v4-exact-logcat-api-${{ matrix.api }}.txt
+            /tmp/first-check-v4-exact-screen-api-${{ matrix.api }}.png
+          retention-days: 7
