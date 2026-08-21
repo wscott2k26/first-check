@@ -38,10 +38,13 @@ test('accepts the approved Pro contract', () => {
   assert.equal(validateProBilling(root), true);
 });
 
-test('rejects a hard-coded launch price in app source', () => {
+test('rejects a hard-coded launch price and names the offending source file', () => {
   const { root, write } = makeRoot();
   write('apps/mobile/app/(tabs)/more.tsx', 'Upgrade for $9.99');
-  assert.throws(() => validateProBilling(root), /localized store price/i);
+  assert.throws(
+    () => validateProBilling(root),
+    (error) => /localized store price/i.test(error.message) && error.message.includes('apps/mobile/app/(tabs)/more.tsx'),
+  );
 });
 
 test('rejects RevenueCat entitlement drift', () => {
