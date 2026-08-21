@@ -9,8 +9,11 @@ on:
       - 'ci/storm-brand-v4.payload.part*'
       - 'ci/apply-first-check-pro.mjs'
       - 'ci/apply-first-check-pro-code4.mjs'
+      - 'ci/apply-first-check-pro-billing-hardening.mjs'
+      - 'ci/test-apply-first-check-pro-billing-hardening.mjs'
       - 'ci/assert-first-check-pro-code4.mjs'
       - 'ci/assert-pro-billing-ready.mjs'
+      - 'ci/test-assert-pro-billing-ready.mjs'
       - 'ci/release-input-fingerprint.sh'
       - 'ci/test-store-workflow-pr-contract.mjs'
       - 'ci/first-check-pro.payload.part*'
@@ -23,8 +26,11 @@ on:
       - 'ci/storm-brand-v4.payload.part*'
       - 'ci/apply-first-check-pro.mjs'
       - 'ci/apply-first-check-pro-code4.mjs'
+      - 'ci/apply-first-check-pro-billing-hardening.mjs'
+      - 'ci/test-apply-first-check-pro-billing-hardening.mjs'
       - 'ci/assert-first-check-pro-code4.mjs'
       - 'ci/assert-pro-billing-ready.mjs'
+      - 'ci/test-assert-pro-billing-ready.mjs'
       - 'ci/release-input-fingerprint.sh'
       - 'ci/test-store-workflow-pr-contract.mjs'
       - 'ci/first-check-pro.payload.part*'
@@ -73,6 +79,7 @@ jobs:
       - name: Run release-hardening unit contracts
         run: |
           node --test ci/test-assert-pro-billing-ready.mjs
+          node --test ci/test-apply-first-check-pro-billing-hardening.mjs
           python3 ci/test_release_input_fingerprint.py
           node --test ci/test-runtime-workflow-contract.mjs
           node --test ci/test-store-workflow-pr-contract.mjs
@@ -96,11 +103,13 @@ jobs:
         run: node ci/apply-first-check-pro-code4.mjs build-src
       - name: Verify Pro code 4 + clean-launch contract
         run: node ci/assert-first-check-pro-code4.mjs build-src
+      - name: Harden Pro localized pricing + trial copy
+        run: node ci/apply-first-check-pro-billing-hardening.mjs build-src
       - name: Diagnose PR Pro billing source before gate
         if: github.event_name == 'pull_request'
         run: |
           echo '=== pro.tsx pricing + RevenueCat references ==='
-          grep -n -C 8 -E '\$9\.99|\$79\.99|REVENUECAT|priceString|introPrice|trial' build-src/apps/mobile/app/pro.tsx || true
+          grep -n -C 8 -E '\$9\.99|\$79\.99|REVENUECAT|priceString|introPrice|freePhase|trial' build-src/apps/mobile/app/pro.tsx || true
           echo '=== billing source files ==='
           find build-src/apps/mobile/src/billing -maxdepth 1 -type f -print | sort
           for FILE in $(find build-src/apps/mobile/src/billing -maxdepth 1 -type f | sort); do
