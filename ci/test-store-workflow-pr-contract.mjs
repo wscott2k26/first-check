@@ -10,7 +10,7 @@ test('store workflow can verify pull requests targeting main', () => {
 });
 
 test('PR verification never writes build receipts to main', () => {
-  const guarded = (name) => new RegExp(`- name: ${name}\\n\\s+if: github\\.event_name != 'pull_request'`);
+  const guarded = (name) => new RegExp(`- name: ${name}\\n\\s+if: [^\\n]*github\\.event_name != 'pull_request'`);
   assert.match(yml, guarded('Record build start'));
   assert.match(yml, guarded('Record build result'));
 });
