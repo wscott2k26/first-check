@@ -30,7 +30,10 @@ export function validateProBilling(root = 'build-src') {
 
   const appFiles = walkTextFiles(root, path.join(root, 'apps/mobile'));
   const appSource = appFiles.map(({ text }) => text).join('\n');
-  must(appSource.includes('REVENUECAT_ANDROID_API_KEY'), 'Android RevenueCat public-key configuration hook is missing');
+  must(
+    appSource.includes('process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY'),
+    'Android RevenueCat public-key configuration must use EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY',
+  );
   must(/restorePurchases/.test(appSource), 'Restore Purchases implementation is missing');
   must(/purchasePackage/.test(appSource), 'RevenueCat package purchase implementation is missing');
   must(/getOfferings/.test(appSource), 'RevenueCat offerings loading is missing');
@@ -43,6 +46,14 @@ export function validateProBilling(root = 'build-src') {
     hardCodedPriceFiles.length === 0,
     `App source must use localized store price strings, not hard-coded launch prices. Offending files: ${hardCodedPriceFiles.join(', ')}`,
   );
+
+  const proPaywall = read(root, 'apps/mobile/app/pro.tsx');
+  if (/free trial/i.test(proPaywall)) {
+    must(
+      /freePhase/.test(proPaywall),
+      'Trial marketing must be backed by returned store free-phase data before it is shown.',
+    );
+  }
 
   for (const rel of [
     'scripts/billing-policy.test.mjs',
