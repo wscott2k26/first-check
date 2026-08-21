@@ -12,6 +12,21 @@ on:
       - 'ci/assert-first-check-pro-code4.mjs'
       - 'ci/assert-pro-billing-ready.mjs'
       - 'ci/release-input-fingerprint.sh'
+      - 'ci/test-store-workflow-pr-contract.mjs'
+      - 'ci/first-check-pro.payload.part*'
+      - '.github/workflows/android-store-public.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ci/apply-store-v3-hardening.mjs'
+      - 'ci/apply-storm-brand-v4.mjs'
+      - 'ci/storm-brand-v4.payload.part*'
+      - 'ci/apply-first-check-pro.mjs'
+      - 'ci/apply-first-check-pro-code4.mjs'
+      - 'ci/assert-first-check-pro-code4.mjs'
+      - 'ci/assert-pro-billing-ready.mjs'
+      - 'ci/release-input-fingerprint.sh'
+      - 'ci/test-store-workflow-pr-contract.mjs'
       - 'ci/first-check-pro.payload.part*'
       - '.github/workflows/android-store-public.yml'
   workflow_dispatch:
@@ -20,7 +35,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: first-check-android-store
+  group: first-check-android-store-${{ github.event.pull_request.number || 'main' }}
   cancel-in-progress: false
 
 jobs:
@@ -32,6 +47,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Record build start
+        if: github.event_name != 'pull_request'
         run: |
           git pull --rebase origin main || true
           printf '{"status":"started","run_id":%s,"started_at":"%s"}\n' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ci/store-build-start.json
@@ -54,6 +70,12 @@ jobs:
           corepack prepare pnpm@11.9.0 --activate
           pnpm --version
           java -version
+      - name: Run release-hardening unit contracts
+        run: |
+          node --test ci/test-assert-pro-billing-ready.mjs
+          python3 ci/test_release_input_fingerprint.py
+          node --test ci/test-runtime-workflow-contract.mjs
+          node --test ci/test-store-workflow-pr-contract.mjs
       - name: Reconstruct verified CI source
         run: bash ci/RECONSTRUCT.sh
       - name: Apply existing Air + SDK compatibility
@@ -92,6 +114,26 @@ jobs:
             scripts/pro-more-screen.test.mjs \
             scripts/pro-release-contract.test.mjs \
             scripts/brand-polish.test.mjs
+      - name: Stage PR billing inspection evidence
+        if: github.event_name == 'pull_request'
+        run: |
+          rm -rf /tmp/first-check-pro-pr-inspection
+          mkdir -p /tmp/first-check-pro-pr-inspection
+          cp -R build-src/apps/mobile/src/billing /tmp/first-check-pro-pr-inspection/billing
+          cp build-src/apps/mobile/app.config.ts /tmp/first-check-pro-pr-inspection/app.config.ts
+          cp build-src/apps/mobile/package.json /tmp/first-check-pro-pr-inspection/mobile-package.json
+          find build-src -maxdepth 4 -name eas.json -type f -exec cp '{}' /tmp/first-check-pro-pr-inspection/eas.json \; -quit || true
+          cp build-src/scripts/billing-policy.test.mjs /tmp/first-check-pro-pr-inspection/
+          cp build-src/scripts/billing-client-contract.test.mjs /tmp/first-check-pro-pr-inspection/
+          cp build-src/scripts/billing-provider-contract.test.mjs /tmp/first-check-pro-pr-inspection/
+          grep -Rni 'REVENUECAT_ANDROID_API_KEY' build-src/apps/mobile > /tmp/first-check-pro-pr-inspection/revenuecat-key-hook.txt || true
+      - name: Upload PR billing inspection evidence
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-check-pro-pr-inspection
+          path: /tmp/first-check-pro-pr-inspection
+          retention-days: 7
       - name: Fingerprint exact release inputs
         working-directory: build-src
         run: |
@@ -164,7 +206,7 @@ jobs:
           path: build-src/pnpm-lock.yaml
           retention-days: 7
       - name: Record build result
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         run: |
           git pull --rebase origin main || true
           AAB_SHA=''
