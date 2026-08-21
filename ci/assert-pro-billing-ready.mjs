@@ -5,15 +5,20 @@ import { fileURLToPath } from 'node:url';
 const must = (condition, message) => { if (!condition) throw new Error(message); };
 const read = (root, rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 const exists = (root, rel) => fs.existsSync(path.join(root, rel));
-const walkText = (dir) => {
+const walkTextFiles = (root, dir) => {
   const out = [];
   if (!fs.existsSync(dir)) return out;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(walkText(full));
-    else if (/\.(?:ts|tsx|js|mjs|json)$/.test(entry.name)) out.push(fs.readFileSync(full, 'utf8'));
+    if (entry.isDirectory()) out.push(...walkTextFiles(root, full));
+    else if (/\.(?:ts|tsx|js|mjs|json)$/.test(entry.name)) {
+      out.push({
+        rel: path.relative(root, full).split(path.sep).join('/'),
+        text: fs.readFileSync(full, 'utf8'),
+      });
+    }
   }
-  return out.join('\n');
+  return out;
 };
 
 export function validateProBilling(root = 'build-src') {
@@ -23,13 +28,21 @@ export function validateProBilling(root = 'build-src') {
   const entitlement = read(root, 'apps/mobile/src/billing/entitlement-policy.ts');
   must(entitlement.includes("PRO_ENTITLEMENT_ID = 'pro'"), 'RevenueCat entitlement must remain pro');
 
-  const appSource = walkText(path.join(root, 'apps/mobile'));
+  const appFiles = walkTextFiles(root, path.join(root, 'apps/mobile'));
+  const appSource = appFiles.map(({ text }) => text).join('\n');
   must(appSource.includes('REVENUECAT_ANDROID_API_KEY'), 'Android RevenueCat public-key configuration hook is missing');
   must(/restorePurchases/.test(appSource), 'Restore Purchases implementation is missing');
   must(/purchasePackage/.test(appSource), 'RevenueCat package purchase implementation is missing');
   must(/getOfferings/.test(appSource), 'RevenueCat offerings loading is missing');
   must(/customerInfo/i.test(appSource), 'RevenueCat customer-info entitlement refresh is missing');
-  must(!/\$9\.99|\$79\.99/.test(appSource), 'App source must use localized store price strings, not hard-coded launch prices');
+
+  const hardCodedPriceFiles = appFiles
+    .filter(({ text }) => /\$9\.99|\$79\.99/.test(text))
+    .map(({ rel }) => rel);
+  must(
+    hardCodedPriceFiles.length === 0,
+    `App source must use localized store price strings, not hard-coded launch prices. Offending files: ${hardCodedPriceFiles.join(', ')}`,
+  );
 
   for (const rel of [
     'scripts/billing-policy.test.mjs',
