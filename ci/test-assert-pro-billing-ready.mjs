@@ -15,12 +15,13 @@ const makeRoot = () => {
   write('apps/mobile/package.json', JSON.stringify({ dependencies: { 'react-native-purchases': '10.5.0' } }));
   write('apps/mobile/src/billing/entitlement-policy.ts', "export const PRO_ENTITLEMENT_ID = 'pro';\n");
   write('apps/mobile/src/billing/billing-client.ts', `
-    const REVENUECAT_ANDROID_API_KEY = 'REVENUECAT_ANDROID_API_KEY';
+    const REVENUECAT_ANDROID_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY ?? '';
     export async function loadBilling(){ return Purchases.getOfferings(); }
     export async function buy(pkg){ return Purchases.purchasePackage(pkg); }
     export async function restore(){ return Purchases.restorePurchases(); }
   `);
   write('apps/mobile/src/billing/billing-provider.tsx', 'const customerInfo = {};');
+  write('apps/mobile/app/pro.tsx', 'const noTrialCopy = true;');
   write('apps/mobile/app/(tabs)/ask-ai.tsx', 'First Check Pro');
   write('apps/mobile/app/(tabs)/history.tsx', 'Full operational history');
   write('apps/mobile/app/(tabs)/more.tsx', 'Advanced reports and exports');
@@ -45,6 +46,21 @@ test('rejects a hard-coded launch price and names the offending source file', ()
     () => validateProBilling(root),
     (error) => /localized store price/i.test(error.message) && error.message.includes('apps/mobile/app/(tabs)/more.tsx'),
   );
+});
+
+test('rejects unconditional free-trial marketing without a store free-phase signal', () => {
+  const { root, write } = makeRoot();
+  write('apps/mobile/app/pro.tsx', '<Text>7-day free trial for eligible new subscribers.</Text>');
+  assert.throws(() => validateProBilling(root), /trial.*store.*free.?phase/i);
+});
+
+test('accepts trial copy when the paywall checks a returned store free phase', () => {
+  const { root, write } = makeRoot();
+  write('apps/mobile/app/pro.tsx', `
+    const hasStoreTrial = ordered.some(pkg => Boolean(pkg.product.defaultOption?.freePhase));
+    const view = hasStoreTrial ? <Text>Free trial available through the store offer.</Text> : null;
+  `);
+  assert.equal(validateProBilling(root), true);
 });
 
 test('rejects RevenueCat entitlement drift', () => {
