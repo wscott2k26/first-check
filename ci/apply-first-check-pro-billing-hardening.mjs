@@ -28,10 +28,9 @@ function hardenPaywallContract(root) {
     const trialLine = lines.find(isUnconditionalTrialAssertion);
     must(monthLine, 'Generated Pro paywall contract is missing the expected monthly-price assertion');
     must(yearLine, 'Generated Pro paywall contract is missing the expected annual-price assertion');
-    must(trialLine, 'Generated Pro paywall contract is missing the expected trial assertion');
 
     const monthSubject = assertionSubject(monthLine);
-    const trialSubject = assertionSubject(trialLine);
+    const trialSubject = trialLine ? assertionSubject(trialLine) : monthSubject;
     must(monthSubject, 'Generated Pro paywall monthly-price assertion subject could not be parsed');
     must(trialSubject, 'Generated Pro paywall trial assertion subject could not be parsed');
 
@@ -40,6 +39,7 @@ function hardenPaywallContract(root) {
       if (isMonthlyPriceAssertion(line)) {
         const indent = line.match(/^\s*/)?.[0] ?? '';
         next.push(`${indent}assert.doesNotMatch(${monthSubject}, /\\$9\\.99|\\$79\\.99/);`);
+        if (!trialLine) next.push(`${indent}assert.match(${trialSubject}, /freePhase/);`);
         continue;
       }
       if (isAnnualPriceAssertion(line)) continue;
