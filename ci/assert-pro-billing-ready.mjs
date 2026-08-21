@@ -10,7 +10,7 @@ const walkText = (dir) => {
   if (!fs.existsSync(dir)) return out;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...walkText(full));
+    if (entry.isDirectory()) out.push(walkText(full));
     else if (/\.(?:ts|tsx|js|mjs|json)$/.test(entry.name)) out.push(fs.readFileSync(full, 'utf8'));
   }
   return out.join('\n');
