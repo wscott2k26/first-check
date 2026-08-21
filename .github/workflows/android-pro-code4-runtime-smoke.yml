@@ -1,13 +1,15 @@
 name: First Check Pro 1.1 Code 4 Runtime Smoke
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'ci/store-build-result.json'
-      - 'ci/run-pro-code4-smoke-stable.sh'
-      - '.github/workflows/android-pro-code4-runtime-smoke.yml'
+  workflow_run:
+    workflows: ["First Check Android Store Build"]
+    types: [completed]
   workflow_dispatch:
+    inputs:
+      source_run:
+        description: "Successful First Check Android Store Build run ID"
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -23,21 +25,43 @@ jobs:
     outputs:
       build_status: ${{ steps.meta.outputs.build_status }}
       source_run: ${{ steps.meta.outputs.source_run }}
+      source_head_sha: ${{ steps.meta.outputs.source_head_sha }}
       aab_sha: ${{ steps.meta.outputs.aab_sha }}
+      release_input_sha: ${{ steps.meta.outputs.release_input_sha }}
     steps:
       - uses: actions/checkout@v4
       - id: meta
-        name: Read Pro build receipt
+        name: Resolve and verify exact Pro store build
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          STATUS="$(node -p "JSON.parse(require('fs').readFileSync('ci/store-build-result.json','utf8')).status")"
-          RUN="$(node -p "JSON.parse(require('fs').readFileSync('ci/store-build-result.json','utf8')).run_id")"
-          SHA="$(node -p "JSON.parse(require('fs').readFileSync('ci/store-build-result.json','utf8')).unsigned_aab_sha256")"
+          if test '${{ github.event_name }}' = workflow_run; then
+            RUN='${{ github.event.workflow_run.id }}'
+            STATUS='${{ github.event.workflow_run.conclusion }}'
+            HEAD_SHA='${{ github.event.workflow_run.head_sha }}'
+          else
+            RUN='${{ inputs.source_run }}'
+            STATUS="$(gh run view "$RUN" --repo '${{ github.repository }}' --json conclusion -q .conclusion)"
+            HEAD_SHA="$(gh run view "$RUN" --repo '${{ github.repository }}' --json headSha -q .headSha)"
+          fi
+
           echo "build_status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "source_run=$RUN" >> "$GITHUB_OUTPUT"
-          echo "aab_sha=$SHA" >> "$GITHUB_OUTPUT"
-          if test "$STATUS" != success || test -z "$SHA"; then
-            echo 'Pro build receipt is not green yet; runtime smoke will stay gated.'
-          fi
+          echo "source_head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          test "$STATUS" = success
+
+          mkdir -p /tmp/pro-code4-preflight
+          gh run download "$RUN" --repo '${{ github.repository }}' \
+            -n first-check-pro-v1.1-code4-unsigned-store-aab \
+            -D /tmp/pro-code4-preflight
+          AAB=/tmp/pro-code4-preflight/first-check-pro-v1.1-code4-unsigned-release.aab
+          EXPECTED_SHA="$(cut -d' ' -f1 /tmp/pro-code4-preflight/first-check-pro-v1.1-code4-unsigned-release.sha256)"
+          SOURCE_FINGERPRINT="$(tr -d '\r\n ' < /tmp/pro-code4-preflight/first-check-pro-v1.1-code4-source.sha256)"
+          ACTUAL_SHA="$(sha256sum "$AAB" | awk '{print $1}')"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          test "$(printf '%s' "$SOURCE_FINGERPRINT" | wc -c)" -eq 64
+          echo "aab_sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
+          echo "release_input_sha=$SOURCE_FINGERPRINT" >> "$GITHUB_OUTPUT"
 
   runtime:
     needs: preflight
@@ -128,8 +152,8 @@ jobs:
             if test "$RUNTIME" = success; then STATUS='success'; fi
           fi
           git pull --rebase origin main || true
-          printf '{"status":"%s","run_id":%s,"source_run":%s,"release":"1.1.0","version_code":4,"runtime":"%s","apis":[35,36],"cold_launches_per_api":5,"unsigned_aab_sha256":"%s"}\n' \
-            "$STATUS" '${{ github.run_id }}' '${{ needs.preflight.outputs.source_run }}' "$RUNTIME" '${{ needs.preflight.outputs.aab_sha }}' > ci/pro-code4-runtime-result.json
+          printf '{"status":"%s","run_id":%s,"source_run":%s,"source_head_sha":"%s","release_input_sha256":"%s","release":"1.1.0","version_code":4,"runtime":"%s","apis":[35,36],"cold_launches_per_api":5,"unsigned_aab_sha256":"%s"}\n' \
+            "$STATUS" '${{ github.run_id }}' '${{ needs.preflight.outputs.source_run }}' '${{ needs.preflight.outputs.source_head_sha }}' '${{ needs.preflight.outputs.release_input_sha }}' "$RUNTIME" '${{ needs.preflight.outputs.aab_sha }}' > ci/pro-code4-runtime-result.json
           git config user.name 'First Check CI'
           git config user.email 'actions@users.noreply.github.com'
           git add ci/pro-code4-runtime-result.json
