@@ -11,6 +11,7 @@ on:
       - 'ci/apply-first-check-pro-code4.mjs'
       - 'ci/assert-first-check-pro-code4.mjs'
       - 'ci/assert-pro-billing-ready.mjs'
+      - 'ci/release-input-fingerprint.sh'
       - 'ci/first-check-pro.payload.part*'
       - '.github/workflows/android-store-public.yml'
   workflow_dispatch:
@@ -91,6 +92,11 @@ jobs:
             scripts/pro-more-screen.test.mjs \
             scripts/pro-release-contract.test.mjs \
             scripts/brand-polish.test.mjs
+      - name: Fingerprint exact release inputs
+        working-directory: build-src
+        run: |
+          bash ../ci/release-input-fingerprint.sh . | tee /tmp/first-check-pro-v1.1-code4-source.sha256
+          test "$(wc -c < /tmp/first-check-pro-v1.1-code4-source.sha256)" -eq 65
       - name: Install and lock dependencies
         working-directory: build-src
         run: |
@@ -149,6 +155,7 @@ jobs:
           path: |
             /tmp/first-check-pro-v1.1-code4-unsigned-release.aab
             /tmp/first-check-pro-v1.1-code4-unsigned-release.sha256
+            /tmp/first-check-pro-v1.1-code4-source.sha256
           retention-days: 7
       - name: Upload generated lockfile
         uses: actions/upload-artifact@v4
@@ -160,9 +167,11 @@ jobs:
         if: always()
         run: |
           git pull --rebase origin main || true
-          SHA=''
-          test ! -f /tmp/first-check-pro-v1.1-code4-unsigned-release.sha256 || SHA="$(cut -d' ' -f1 /tmp/first-check-pro-v1.1-code4-unsigned-release.sha256)"
-          printf '{"status":"%s","run_id":%s,"finished_at":"%s","release":"1.1.0","version_code":4,"ios_build":"2","unsigned_aab_sha256":"%s"}\n' '${{ job.status }}' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SHA" > ci/store-build-result.json
+          AAB_SHA=''
+          INPUT_SHA=''
+          test ! -f /tmp/first-check-pro-v1.1-code4-unsigned-release.sha256 || AAB_SHA="$(cut -d' ' -f1 /tmp/first-check-pro-v1.1-code4-unsigned-release.sha256)"
+          test ! -f /tmp/first-check-pro-v1.1-code4-source.sha256 || INPUT_SHA="$(tr -d '\r\n ' < /tmp/first-check-pro-v1.1-code4-source.sha256)"
+          printf '{"status":"%s","run_id":%s,"finished_at":"%s","source_head_sha":"%s","release_input_sha256":"%s","release":"1.1.0","version_code":4,"ios_build":"2","unsigned_aab_sha256":"%s"}\n' '${{ job.status }}' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '${{ github.sha }}' "$INPUT_SHA" "$AAB_SHA" > ci/store-build-result.json
           git add ci/store-build-result.json
           git commit -m "ci: Pro v1.1 code4 build result ${{ github.run_id }} ${{ job.status }}" || true
           git push origin HEAD:main
