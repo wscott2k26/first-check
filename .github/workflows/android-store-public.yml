@@ -96,6 +96,17 @@ jobs:
         run: node ci/apply-first-check-pro-code4.mjs build-src
       - name: Verify Pro code 4 + clean-launch contract
         run: node ci/assert-first-check-pro-code4.mjs build-src
+      - name: Diagnose PR Pro billing source before gate
+        if: github.event_name == 'pull_request'
+        run: |
+          echo '=== pro.tsx pricing + RevenueCat references ==='
+          grep -n -C 8 -E '\$9\.99|\$79\.99|REVENUECAT|priceString|introPrice|trial' build-src/apps/mobile/app/pro.tsx || true
+          echo '=== billing source files ==='
+          find build-src/apps/mobile/src/billing -maxdepth 1 -type f -print | sort
+          for FILE in $(find build-src/apps/mobile/src/billing -maxdepth 1 -type f | sort); do
+            echo "===== $FILE ====="
+            sed -n '1,260p' "$FILE"
+          done
       - name: Verify Pro billing + paywall contract
         run: node ci/assert-pro-billing-ready.mjs build-src
       - name: Stage CI applicator contract for tests
@@ -121,6 +132,7 @@ jobs:
           mkdir -p /tmp/first-check-pro-pr-inspection
           cp -R build-src/apps/mobile/src/billing /tmp/first-check-pro-pr-inspection/billing
           cp build-src/apps/mobile/app.config.ts /tmp/first-check-pro-pr-inspection/app.config.ts
+          cp build-src/apps/mobile/app/pro.tsx /tmp/first-check-pro-pr-inspection/pro.tsx
           cp build-src/apps/mobile/package.json /tmp/first-check-pro-pr-inspection/mobile-package.json
           find build-src -maxdepth 4 -name eas.json -type f -exec cp '{}' /tmp/first-check-pro-pr-inspection/eas.json \; -quit || true
           cp build-src/scripts/billing-policy.test.mjs /tmp/first-check-pro-pr-inspection/
