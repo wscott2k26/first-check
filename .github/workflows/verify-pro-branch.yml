@@ -1,0 +1,66 @@
+name: Verify First Check Pro Branch
+
+on:
+  push:
+    branches:
+      - feature/first-check-pro-1.1-android-release
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-pro-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+
+      - name: Run release-hardening unit contracts
+        run: |
+          node --test ci/test-assert-pro-billing-ready.mjs
+          python3 ci/test_release_input_fingerprint.py
+          node --test ci/test-runtime-workflow-contract.mjs
+
+      - name: Reconstruct verified First Check source
+        run: bash ci/RECONSTRUCT.sh
+
+      - name: Apply production source transforms in store order
+        run: |
+          node ci/apply-premium-mobile-theme.mjs build-src
+          node ci/apply-expo-sdk57-compat.mjs build-src
+          node ci/apply-typescript-sdk57-compat.mjs build-src
+          node ci/apply-mobile-tsconfig-sdk57-compat.mjs build-src
+          node ci/apply-mobile-typescript-source-compat.mjs build-src
+          node ci/restore-workspace-config.mjs build-src
+          node ci/apply-store-v3-hardening.mjs build-src
+          node ci/apply-storm-brand-v4.mjs build-src
+          node ci/apply-first-check-pro.mjs build-src
+          node ci/apply-first-check-pro-code4.mjs build-src
+
+      - name: Verify code 4, billing, and clean-launch contracts
+        run: |
+          node ci/assert-first-check-pro-code4.mjs build-src
+          node ci/assert-pro-billing-ready.mjs build-src
+
+      - name: Run actual reconstructed Pro regression tests
+        working-directory: build-src
+        run: |
+          node --experimental-strip-types --test \
+            scripts/billing-policy.test.mjs \
+            scripts/billing-client-contract.test.mjs \
+            scripts/billing-provider-contract.test.mjs \
+            scripts/pro-paywall-contract.test.mjs \
+            scripts/pro-feature-gates.test.mjs \
+            scripts/pro-more-screen.test.mjs \
+            scripts/pro-release-contract.test.mjs
+
+      - name: Prove deterministic release fingerprint
+        working-directory: build-src
+        run: |
+          HASH="$(bash ../ci/release-input-fingerprint.sh .)"
+          test "$(printf '%s' "$HASH" | wc -c)" -eq 64
+          echo "Release input SHA256=$HASH"
