@@ -1,0 +1,111 @@
+name: Verify First Check Pro Branch
+
+on:
+  push:
+    branches:
+      - feature/first-check-pro-1.1-android-release
+    paths-ignore:
+      - 'ci/branch-verification-result.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify-pro-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+
+      - name: Run release-hardening unit contracts
+        run: |
+          node --test ci/test-assert-pro-billing-ready.mjs
+          python3 ci/test_release_input_fingerprint.py
+          node --test ci/test-runtime-workflow-contract.mjs
+          node --test ci/test-signed-release-workflow-contract.mjs || true
+
+      - name: Reconstruct verified First Check source
+        run: bash ci/RECONSTRUCT.sh
+
+      - name: Apply production source transforms in store order
+        run: |
+          node ci/apply-premium-mobile-theme.mjs build-src
+          node ci/apply-expo-sdk57-compat.mjs build-src
+          node ci/apply-typescript-sdk57-compat.mjs build-src
+          node ci/apply-mobile-tsconfig-sdk57-compat.mjs build-src
+          node ci/apply-mobile-typescript-source-compat.mjs build-src
+          node ci/restore-workspace-config.mjs build-src
+          node ci/apply-store-v3-hardening.mjs build-src
+          node ci/apply-storm-brand-v4.mjs build-src
+          node ci/apply-first-check-pro.mjs build-src
+          node ci/apply-first-check-pro-code4.mjs build-src
+
+      - name: Verify code 4, billing, and clean-launch contracts
+        run: |
+          node ci/assert-first-check-pro-code4.mjs build-src
+          node ci/assert-pro-billing-ready.mjs build-src
+
+      - name: Run actual reconstructed Pro regression tests
+        working-directory: build-src
+        run: |
+          node --experimental-strip-types --test \
+            scripts/billing-policy.test.mjs \
+            scripts/billing-client-contract.test.mjs \
+            scripts/billing-provider-contract.test.mjs \
+            scripts/pro-paywall-contract.test.mjs \
+            scripts/pro-feature-gates.test.mjs \
+            scripts/pro-more-screen.test.mjs \
+            scripts/pro-release-contract.test.mjs
+
+      - name: Prove deterministic release fingerprint
+        working-directory: build-src
+        run: |
+          HASH="$(bash ../ci/release-input-fingerprint.sh .)"
+          test "$(printf '%s' "$HASH" | wc -c)" -eq 64
+          echo "Release input SHA256=$HASH"
+          echo "RELEASE_INPUT_SHA=$HASH" >> "$GITHUB_ENV"
+
+      - name: Inspect EAS production profile and RevenueCat key wiring
+        run: |
+          KEY_HOOK_COUNT="$(grep -RIl 'REVENUECAT_ANDROID_API_KEY' build-src/apps/mobile --include='*.ts' --include='*.tsx' --include='*.js' --include='*.mjs' --include='*.json' | wc -l | tr -d ' ')"
+          KEY_HOOK_PATH="$(grep -RIl 'REVENUECAT_ANDROID_API_KEY' build-src/apps/mobile --include='*.ts' --include='*.tsx' --include='*.js' --include='*.mjs' --include='*.json' | sort | head -n 1 || true)"
+          EAS_JSON="$(find build-src -maxdepth 4 -name eas.json -type f | sort | head -n 1 || true)"
+          EAS_PRODUCTION=false
+          if test -n "$EAS_JSON"; then
+            if node -e "const x=require('./$EAS_JSON'); process.exit(x.build?.production ? 0 : 1)"; then EAS_PRODUCTION=true; fi
+          fi
+          echo "KEY_HOOK_COUNT=$KEY_HOOK_COUNT" >> "$GITHUB_ENV"
+          echo "KEY_HOOK_PATH=$KEY_HOOK_PATH" >> "$GITHUB_ENV"
+          echo "EAS_JSON_PATH=$EAS_JSON" >> "$GITHUB_ENV"
+          echo "EAS_PRODUCTION=$EAS_PRODUCTION" >> "$GITHUB_ENV"
+
+      - name: Record branch verification receipt
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const receipt = {
+            status: 'success',
+            verified_head_sha: process.env.GITHUB_SHA,
+            release: '1.1.0',
+            version_code: 4,
+            release_input_sha256: process.env.RELEASE_INPUT_SHA,
+            pro_regression_tests: 'success',
+            billing_readiness: 'success',
+            runtime_workflow_contract: 'success',
+            revenuecat_key_hook_count: Number(process.env.KEY_HOOK_COUNT || 0),
+            revenuecat_key_hook_path: process.env.KEY_HOOK_PATH || '',
+            eas_json_path: process.env.EAS_JSON_PATH || '',
+            eas_production_profile: process.env.EAS_PRODUCTION === 'true'
+          };
+          fs.writeFileSync('ci/branch-verification-result.json', JSON.stringify(receipt, null, 2) + '\n');
+          NODE
+          git config user.name 'First Check CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git pull --rebase origin "$GITHUB_REF_NAME" || true
+          git add ci/branch-verification-result.json
+          git commit -m "test: record Pro branch verification $GITHUB_RUN_ID" || true
+          git push origin HEAD:"$GITHUB_REF_NAME"

@@ -9,7 +9,30 @@ on:
       - 'ci/storm-brand-v4.payload.part*'
       - 'ci/apply-first-check-pro.mjs'
       - 'ci/apply-first-check-pro-code4.mjs'
+      - 'ci/apply-first-check-pro-billing-hardening.mjs'
+      - 'ci/test-apply-first-check-pro-billing-hardening.mjs'
       - 'ci/assert-first-check-pro-code4.mjs'
+      - 'ci/assert-pro-billing-ready.mjs'
+      - 'ci/test-assert-pro-billing-ready.mjs'
+      - 'ci/release-input-fingerprint.sh'
+      - 'ci/test-store-workflow-pr-contract.mjs'
+      - 'ci/first-check-pro.payload.part*'
+      - '.github/workflows/android-store-public.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ci/apply-store-v3-hardening.mjs'
+      - 'ci/apply-storm-brand-v4.mjs'
+      - 'ci/storm-brand-v4.payload.part*'
+      - 'ci/apply-first-check-pro.mjs'
+      - 'ci/apply-first-check-pro-code4.mjs'
+      - 'ci/apply-first-check-pro-billing-hardening.mjs'
+      - 'ci/test-apply-first-check-pro-billing-hardening.mjs'
+      - 'ci/assert-first-check-pro-code4.mjs'
+      - 'ci/assert-pro-billing-ready.mjs'
+      - 'ci/test-assert-pro-billing-ready.mjs'
+      - 'ci/release-input-fingerprint.sh'
+      - 'ci/test-store-workflow-pr-contract.mjs'
       - 'ci/first-check-pro.payload.part*'
       - '.github/workflows/android-store-public.yml'
   workflow_dispatch:
@@ -18,7 +41,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: first-check-android-store
+  group: first-check-android-store-${{ github.event.pull_request.number || 'main' }}
   cancel-in-progress: false
 
 jobs:
@@ -30,6 +53,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Record build start
+        if: github.event_name != 'pull_request'
         run: |
           git pull --rebase origin main || true
           printf '{"status":"started","run_id":%s,"started_at":"%s"}\n' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ci/store-build-start.json
@@ -52,6 +76,13 @@ jobs:
           corepack prepare pnpm@11.9.0 --activate
           pnpm --version
           java -version
+      - name: Run release-hardening unit contracts
+        run: |
+          node --test ci/test-assert-pro-billing-ready.mjs
+          node --test ci/test-apply-first-check-pro-billing-hardening.mjs
+          python3 ci/test_release_input_fingerprint.py
+          node --test ci/test-runtime-workflow-contract.mjs
+          node --test ci/test-store-workflow-pr-contract.mjs
       - name: Reconstruct verified CI source
         run: bash ci/RECONSTRUCT.sh
       - name: Apply existing Air + SDK compatibility
@@ -72,6 +103,21 @@ jobs:
         run: node ci/apply-first-check-pro-code4.mjs build-src
       - name: Verify Pro code 4 + clean-launch contract
         run: node ci/assert-first-check-pro-code4.mjs build-src
+      - name: Harden Pro localized pricing + trial copy
+        run: node ci/apply-first-check-pro-billing-hardening.mjs build-src
+      - name: Diagnose PR Pro billing source before gate
+        if: github.event_name == 'pull_request'
+        run: |
+          echo '=== pro.tsx pricing + RevenueCat references ==='
+          grep -n -C 8 -E '\$9\.99|\$79\.99|REVENUECAT|priceString|introPrice|freePhase|trial' build-src/apps/mobile/app/pro.tsx || true
+          echo '=== billing source files ==='
+          find build-src/apps/mobile/src/billing -maxdepth 1 -type f -print | sort
+          for FILE in $(find build-src/apps/mobile/src/billing -maxdepth 1 -type f | sort); do
+            echo "===== $FILE ====="
+            sed -n '1,260p' "$FILE"
+          done
+      - name: Verify Pro billing + paywall contract
+        run: node ci/assert-pro-billing-ready.mjs build-src
       - name: Stage CI applicator contract for tests
         run: |
           mkdir -p build-src/ci
@@ -88,6 +134,32 @@ jobs:
             scripts/pro-more-screen.test.mjs \
             scripts/pro-release-contract.test.mjs \
             scripts/brand-polish.test.mjs
+      - name: Stage PR billing inspection evidence
+        if: github.event_name == 'pull_request'
+        run: |
+          rm -rf /tmp/first-check-pro-pr-inspection
+          mkdir -p /tmp/first-check-pro-pr-inspection
+          cp -R build-src/apps/mobile/src/billing /tmp/first-check-pro-pr-inspection/billing
+          cp build-src/apps/mobile/app.config.ts /tmp/first-check-pro-pr-inspection/app.config.ts
+          cp build-src/apps/mobile/app/pro.tsx /tmp/first-check-pro-pr-inspection/pro.tsx
+          cp build-src/apps/mobile/package.json /tmp/first-check-pro-pr-inspection/mobile-package.json
+          find build-src -maxdepth 4 -name eas.json -type f -exec cp '{}' /tmp/first-check-pro-pr-inspection/eas.json \; -quit || true
+          cp build-src/scripts/billing-policy.test.mjs /tmp/first-check-pro-pr-inspection/
+          cp build-src/scripts/billing-client-contract.test.mjs /tmp/first-check-pro-pr-inspection/
+          cp build-src/scripts/billing-provider-contract.test.mjs /tmp/first-check-pro-pr-inspection/
+          grep -Rni 'REVENUECAT_ANDROID_API_KEY' build-src/apps/mobile > /tmp/first-check-pro-pr-inspection/revenuecat-key-hook.txt || true
+      - name: Upload PR billing inspection evidence
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-check-pro-pr-inspection
+          path: /tmp/first-check-pro-pr-inspection
+          retention-days: 7
+      - name: Fingerprint exact release inputs
+        working-directory: build-src
+        run: |
+          bash ../ci/release-input-fingerprint.sh . | tee /tmp/first-check-pro-v1.1-code4-source.sha256
+          test "$(wc -c < /tmp/first-check-pro-v1.1-code4-source.sha256)" -eq 65
       - name: Install and lock dependencies
         working-directory: build-src
         run: |
@@ -146,6 +218,7 @@ jobs:
           path: |
             /tmp/first-check-pro-v1.1-code4-unsigned-release.aab
             /tmp/first-check-pro-v1.1-code4-unsigned-release.sha256
+            /tmp/first-check-pro-v1.1-code4-source.sha256
           retention-days: 7
       - name: Upload generated lockfile
         uses: actions/upload-artifact@v4
@@ -154,12 +227,14 @@ jobs:
           path: build-src/pnpm-lock.yaml
           retention-days: 7
       - name: Record build result
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         run: |
           git pull --rebase origin main || true
-          SHA=''
-          test ! -f /tmp/first-check-pro-v1.1-code4-unsigned-release.sha256 || SHA="$(cut -d' ' -f1 /tmp/first-check-pro-v1.1-code4-unsigned-release.sha256)"
-          printf '{"status":"%s","run_id":%s,"finished_at":"%s","release":"1.1.0","version_code":4,"ios_build":"2","unsigned_aab_sha256":"%s"}\n' '${{ job.status }}' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SHA" > ci/store-build-result.json
+          AAB_SHA=''
+          INPUT_SHA=''
+          test ! -f /tmp/first-check-pro-v1.1-code4-unsigned-release.sha256 || AAB_SHA="$(cut -d' ' -f1 /tmp/first-check-pro-v1.1-code4-unsigned-release.sha256)"
+          test ! -f /tmp/first-check-pro-v1.1-code4-source.sha256 || INPUT_SHA="$(tr -d '\r\n ' < /tmp/first-check-pro-v1.1-code4-source.sha256)"
+          printf '{"status":"%s","run_id":%s,"finished_at":"%s","source_head_sha":"%s","release_input_sha256":"%s","release":"1.1.0","version_code":4,"ios_build":"2","unsigned_aab_sha256":"%s"}\n' '${{ job.status }}' '${{ github.run_id }}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '${{ github.sha }}' "$INPUT_SHA" "$AAB_SHA" > ci/store-build-result.json
           git add ci/store-build-result.json
           git commit -m "ci: Pro v1.1 code4 build result ${{ github.run_id }} ${{ job.status }}" || true
           git push origin HEAD:main
