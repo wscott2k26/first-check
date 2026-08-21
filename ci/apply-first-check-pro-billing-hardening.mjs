@@ -11,7 +11,7 @@ const must = (condition, message) => { if (!condition) throw new Error(message);
 const assertionSubject = (line) => line.match(/assert\.match\(\s*([^,]+)\s*,/)?.[1]?.trim() ?? null;
 const isMonthlyPriceAssertion = (line) => line.includes('assert.match(') && line.includes('$9') && /month/i.test(line);
 const isAnnualPriceAssertion = (line) => line.includes('assert.match(') && line.includes('$79') && /(year|annual)/i.test(line);
-const isUnconditionalTrialAssertion = (line) => line.includes('assert.match(') && /7-day free trial/i.test(line);
+const isUnconditionalTrialAssertion = (line) => line.includes('assert.match(') && /trial/i.test(line) && !/freePhase/.test(line);
 const isFixedPriceGuard = (line) => line.includes('assert.doesNotMatch(') && line.includes('$9') && line.includes('$79');
 const isFreePhaseGuard = (line) => line.includes('assert.match(') && line.includes('freePhase');
 
