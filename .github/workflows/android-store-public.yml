@@ -10,6 +10,7 @@ on:
       - 'ci/apply-first-check-pro.mjs'
       - 'ci/apply-first-check-pro-code4.mjs'
       - 'ci/assert-first-check-pro-code4.mjs'
+      - 'ci/assert-pro-billing-ready.mjs'
       - 'ci/first-check-pro.payload.part*'
       - '.github/workflows/android-store-public.yml'
   workflow_dispatch:
@@ -72,6 +73,8 @@ jobs:
         run: node ci/apply-first-check-pro-code4.mjs build-src
       - name: Verify Pro code 4 + clean-launch contract
         run: node ci/assert-first-check-pro-code4.mjs build-src
+      - name: Verify Pro billing + paywall contract
+        run: node ci/assert-pro-billing-ready.mjs build-src
       - name: Stage CI applicator contract for tests
         run: |
           mkdir -p build-src/ci
